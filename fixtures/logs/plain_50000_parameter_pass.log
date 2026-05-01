@@ -1,0 +1,5 @@
+risc-v NH-V5 tests
+case_50000_param_not_stuck
+parameter cycles=50000
+plain 50000 parameter should not imply stuck PASSED
+HIT GOOD TRAP!

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hyptest Failure Triage"
+  short_description: "Hyptest selfcheck, mismatch, and stuck triage"
+  default_prompt: "Use $hyptest-failure-triage to analyze hyptest selfcheck failures, difftest mismatches, or 50000-cycle stuck cases and drive fixes with evidence."

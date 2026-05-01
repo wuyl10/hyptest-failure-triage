@@ -1,0 +1,6 @@
+risc-v NH-V5 tests
+ai_micro_lrsc_reservation_timeout_then_sc_fails_corner
+LR/SC reservation timeout model gap on official Spike
+Expected reservation expiry before sc.w, but official Spike does not model the same reservation timeout policy.
+FAILED
+end

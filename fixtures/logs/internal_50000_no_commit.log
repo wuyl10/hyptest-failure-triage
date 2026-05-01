@@ -1,0 +1,4 @@
+risc-v NH-V5 tests
+case_real_stuck
+50000 cycles no commit
+watchdog: no forward progress

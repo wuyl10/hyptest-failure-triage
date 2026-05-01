@@ -1,0 +1,7 @@
+risc-v NH-V5 tests
+custom_csr_stateen_tests_3
+official Spike reports unsupported custom CSR
+ERROR: unknown csr 0x7c0
+custom CSR model is missing in official Spike
+FAILED
+end

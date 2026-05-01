@@ -1,0 +1,6 @@
+risc-v NH-V5 tests
+nmi_double_trap_tests_1
+NMI double trap entry requires RNMI / mnepc / mncause / mnstatus behavior
+This is outside the current NHV5.1AP core validation scope.
+FAILED
+end

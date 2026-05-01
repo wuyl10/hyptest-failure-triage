@@ -1,0 +1,4 @@
+risc-v NH-V5 tests
+case_bad_trap
+BAD TRAP
+end

@@ -1,0 +1,7 @@
+risc-v NH-V5 tests
+ai_arch_amo_pbmt_io_fault_then_cacheable_alias_amo_recovers_same_pa_corner
+official Spike PMA/PBMT cacheability model gap
+PBMT=IO alias then cacheable alias requires device/MMIO responder and cacheability state
+found_forbidden=['untested exception', 'ERROR:']
+FAILED
+end

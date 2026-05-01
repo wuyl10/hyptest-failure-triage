@@ -1,0 +1,7 @@
+risc-v NH-V5 tests
+custom_cmop_instruction_tests_1
+official Spike illegal instruction on project-specific instruction path
+excpt.cause = 0x2
+illegal instruction
+FAILED
+end

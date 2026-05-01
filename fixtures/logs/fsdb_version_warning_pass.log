@@ -1,0 +1,12 @@
+Dumping FSDB Waveform for DEBUG is active !!!
+FSDB Dumper for VCS
+***********************************************************************
+*  ERROR -                                                            *
+*  The simulator version is newer than the FSDB dumper version which  *
+*  may cause abnormal behavior, please contact Synopsys support for   *
+*  assistance.                                                        *
+***********************************************************************
+risc-v NH-V5 tests
+case_fsdb_error_but_pass
+fsdb warning should not taint pass PASSED
+HIT GOOD TRAP!

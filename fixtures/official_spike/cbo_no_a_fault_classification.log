@@ -1,0 +1,10 @@
+risc-v NH-V5 tests
+ai_arch_cbozero_no_a_page_fault
+unexpected cbo.zero no-A fault classification
+excpt.triggered = 1
+excpt.priv = m
+excpt.cause = 0xf
+excpt.tval = 0x10006e040
+        cbo.zero reports Store PF with the faulting effective address in tval when A is missing FAILED
+FAILED
+end

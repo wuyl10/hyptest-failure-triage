@@ -1,0 +1,44 @@
+[
+  {
+    "id": "cbo_no_a_fault_classification",
+    "file": "cbo_no_a_fault_classification.log",
+    "case_name": "ai_arch_cbozero_no_a_page_fault",
+    "expected_bucket": "official_spike_cbo_permission_model_gap",
+    "expected_tags": ["official-spike", "model-gap", "cbo", "permission"]
+  },
+  {
+    "id": "pma_pbmt_mmio_cacheability",
+    "file": "pma_pbmt_mmio_cacheability.log",
+    "case_name": "ai_arch_amo_pbmt_io_fault_then_cacheable_alias_amo_recovers_same_pa_corner",
+    "expected_bucket": "official_spike_pma_pbmt_mmio_cacheability_model_gap",
+    "expected_tags": ["official-spike", "model-gap", "pma-pbmt-mmio"]
+  },
+  {
+    "id": "nmi_double_trap_scope_excluded",
+    "file": "nmi_double_trap_scope_excluded.log",
+    "case_name": "nmi_double_trap_tests_1",
+    "expected_bucket": "out_of_scope_nhv5_1ap_nmi_double_trap",
+    "expected_tags": ["official-spike", "scope-exclusion", "nmi-double-trap"]
+  },
+  {
+    "id": "lrsc_reservation_timeout",
+    "file": "lrsc_reservation_timeout.log",
+    "case_name": "ai_micro_lrsc_reservation_timeout_then_sc_fails_corner",
+    "expected_bucket": "official_spike_lrsc_reservation_timeout_model_gap",
+    "expected_tags": ["official-spike", "model-gap", "lrsc", "reservation-timeout"]
+  },
+  {
+    "id": "missing_custom_csr",
+    "file": "missing_custom_csr.log",
+    "case_name": "custom_csr_stateen_tests_3",
+    "expected_bucket": "official_spike_missing_custom_csr_model_gap",
+    "expected_tags": ["official-spike", "model-gap", "custom-csr"]
+  },
+  {
+    "id": "illegal_instruction_model_gap",
+    "file": "illegal_instruction_model_gap.log",
+    "case_name": "custom_cmop_instruction_tests_1",
+    "expected_bucket": "official_spike_illegal_instruction_model_gap",
+    "expected_tags": ["official-spike", "model-gap", "illegal-instruction"]
+  }
+]

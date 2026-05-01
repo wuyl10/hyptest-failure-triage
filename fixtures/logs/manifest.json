@@ -1,0 +1,77 @@
+[
+  {
+    "id": "fsdb_version_warning_pass",
+    "file": "fsdb_version_warning_pass.log",
+    "expected_status": "passed_good_trap",
+    "expected_metadata": {
+      "fsdb_enabled": true,
+      "has_non_ignorable_error": false,
+      "has_good_trap": true
+    },
+    "expected_tags": ["fsdb", "wave-run", "clean-good-trap"]
+  },
+  {
+    "id": "hit_good_trap_but_failed",
+    "file": "hit_good_trap_but_failed.log",
+    "expected_status": "selfcheck_fail",
+    "expected_metadata": {
+      "has_good_trap": true,
+      "has_failed_assert": true
+    }
+  },
+  {
+    "id": "difftest_mismatch",
+    "file": "difftest_mismatch.log",
+    "expected_status": "difftest_mismatch",
+    "expected_metadata": {
+      "difftest_enabled": true,
+      "has_mismatch": true
+    },
+    "expected_tags": ["difftest-enabled"]
+  },
+  {
+    "id": "internal_50000_no_commit",
+    "file": "internal_50000_no_commit.log",
+    "expected_status": "true_stuck_evidence",
+    "expected_metadata": {
+      "has_internal_stuck": true
+    },
+    "expected_tags": ["internal-stuck"]
+  },
+  {
+    "id": "timeout_only",
+    "file": "timeout_only.log",
+    "expected_status": "timeout_inconclusive",
+    "expected_metadata": {
+      "has_timeout": true,
+      "has_internal_stuck": false
+    },
+    "expected_tags": ["timeout-only"]
+  },
+  {
+    "id": "untested_exception_error",
+    "file": "untested_exception_error.log",
+    "expected_status": "failed_or_error",
+    "expected_metadata": {
+      "has_non_ignorable_error": true
+    }
+  },
+  {
+    "id": "bad_trap",
+    "file": "bad_trap.log",
+    "expected_status": "bad_trap",
+    "expected_metadata": {
+      "has_bad_trap": true
+    }
+  },
+  {
+    "id": "plain_50000_parameter_pass",
+    "file": "plain_50000_parameter_pass.log",
+    "expected_status": "passed_good_trap",
+    "expected_metadata": {
+      "has_internal_stuck": false,
+      "has_good_trap": true
+    },
+    "expected_tags": ["clean-good-trap"]
+  }
+]

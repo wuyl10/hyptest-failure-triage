@@ -1,0 +1,7 @@
+risc-v NH-V5 tests
+diff-test ref so:/path/to/riscv64-spike-so
+The reference model is /path/to/riscv64-spike-so
+case_difftest_mismatch
+MISMATCH at pc 0x80001234
+core x10 = 0x1, ref x10 = 0x2
+HIT GOOD TRAP!

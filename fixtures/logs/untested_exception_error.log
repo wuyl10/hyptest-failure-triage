@@ -1,0 +1,5 @@
+risc-v NH-V5 tests
+case_untested_exception
+ERROR: untested exception!
+excpt.cause = 0xd
+end
