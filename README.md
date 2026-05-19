@@ -1,6 +1,6 @@
 # hyptest-failure-triage
 
-`hyptest-failure-triage` 用于 `riscv-hyp-tests-nhv5.1` / LinkNan hyptest 失败闭环。它面向的不是“新增测试点”，而是把已经失败的 case 从失败列表、日志、源码、波形和重跑证据推进到可执行结论。
+`hyptest-failure-triage` 用于 riscv-hyp-tests / LinkNan hyptest 失败闭环。它面向的不是“新增测试点”，而是把已经失败的 case 从单个失败现象、日志、失败列表、源码、波形和重跑证据推进到可执行结论。
 
 典型目标：
 
@@ -8,7 +8,7 @@
 - 区分 Spike / golden model limitation、LinkNan 环境限制、测试自校验错误和真实 RTL 可疑 bug。
 - 判断 stuck 是否有内部 no-commit / watchdog / waveform no-forward-progress 证据，而不是只看 wall-clock timeout。
 - 为 suspected RTL bug 写出可审查的 `report.md`。
-- 在验证通过后安全更新 `selfcheck_fail.txt`、`stuck.txt` 或 mismatch 列表。
+- 在验证通过后安全更新用户明确指定的 `selfcheck_fail.txt`、`stuck.txt` 或 mismatch 列表。
 
 ## 入口文件
 
@@ -24,9 +24,10 @@
 
 看到这些输入或症状时应使用本 skill：
 
-- `selfcheck_fail.txt`
-- `stuck.txt`
+- 单个 case `FAILED` / selfcheck error / timeout / stuck
+- `selfcheck_fail.txt` / `stuck.txt` / mismatch list 等失败列表
 - `run.log` / `assert.log`
+- `get_result.py` batch result log 或用户粘贴的终端输出
 - Spike / LinkNan difftest mismatch
 - `HIT GOOD TRAP` 但仍 `FAILED`
 - `50000 cycles no commit`
@@ -38,18 +39,54 @@
 
 如果任务变成新增/修改 hyptest case、调整 `test_register.c`、编译批跑、回填 `test_point` 或分层落位，同时使用 `hyptest-workflow`。如果任务需要波形 first-bad-cycle、握手、协议或 X-state 分析，同时使用 `waveform-debug`。
 
+## 失败模型
+
+这个 skill 用“三大入口，六类归因”的模型。
+
+三大入口只是失败表象：
+
+- `selfcheck fail`：断言失败、`FAILED`、`HIT GOOD TRAP` 但 selfcheck 失败。
+- `stuck/no-forward-progress`：`50000 cycles no commit`、watchdog/no-forward-progress，或需要判断的 timeout。
+- `difftest mismatch`：DUT 和 Spike/QEMU/golden/reference model 不一致。
+
+六类归因才是最终结论：
+
+| 归因 | 含义 |
+| --- | --- |
+| `selfcheck_bug` | case/assert/setup 错，修测试但不能削弱原验证目标 |
+| `spike_or_model_limitation` | golden/model 缺少所需架构、微结构或平台行为 |
+| `environment_blocked` | 当前平台/testbench 缺 responder、设备、配置或运行能力 |
+| `suspected_rtl_bug` | case 目标合理，日志/波形证据指向 RTL 行为错误 |
+| `true_stuck` | 有内部 no-commit/watchdog 或波形/log 无前进证据 |
+| `inconclusive` | 证据不足，例如只有 wall-clock timeout |
+
+不要把入口表象直接当最终结论：`selfcheck_fail.txt` 里的 case 不一定是 `selfcheck_bug`，`stuck.txt` 里的 case 不一定是 `true_stuck`，difftest mismatch 也不一定是 RTL bug。
+
 ## 环境变量
 
 优先使用环境变量，不依赖个人绝对路径：
 
 ```text
-HYPTEST_REPO or RVH_HYPTEST_REPO  riscv-hyp-tests-nhv5.1 repo root
-LINKNAN_HOME                      LinkNan repo root
-DIFFTEST_REF_SO                   difftest reference shared object
+HYPTEST_REPO or RVH_HYPTEST_REPO  hyptest repo root
+LINKNAN_HOME                      LinkNan repo root when LinkNan artifacts are needed
+DIFFTEST_REF_SO                   difftest reference shared object when LinkNan reruns are needed
 SPIKE_BIN                         official Spike executable when Spike reruns are needed
+HYPTEST_QEMU_BIN                  QEMU executable when QEMU reruns are needed
 ```
 
-常见路径：
+## 输入模式
+
+优先使用用户给出的最具体证据。失败列表文件只在“批量列表分析”或“清理列表”时才是必需输入。
+
+| 模式 | 典型输入 | 是否必须有 txt 列表 |
+| --- | --- | --- |
+| Single-case | case 名、单个失败描述、可选 run.log/assert.log | 否 |
+| Log | run.log/assert.log/get_result batch log/粘贴输出 | 否 |
+| List | 明确的 selfcheck/stuck/mismatch list 路径 | 是 |
+| Cleanup | 要删除/更新的 list 路径 + 可信重跑证据 | 是 |
+| Workflow handoff | workflow 交接卡片里的 case/log/spec_profile | 否 |
+
+传统列表候选路径只作为 discovery hint，不是单 case/log triage 的必需输入：
 
 ```text
 selfcheck list   $LINKNAN_HOME/regress_logs/selfcheck_fail.txt
@@ -57,6 +94,8 @@ stuck list       $LINKNAN_HOME/regress_logs/stuck.txt
 triage reports   $LINKNAN_HOME/regress_logs/
 sim run dirs     $LINKNAN_HOME/sim/simv/
 ```
+
+如果用户没有给 list 文件路径，也没有要求清理列表，就不要强行寻找 `selfcheck_fail.txt` 或 `stuck.txt`；按单 case 或 log 模式继续。
 
 ## 标准流程
 
@@ -73,20 +112,26 @@ python3 scripts/list_skill_commands.py --markdown
 python3 scripts/list_skill_commands.py --json
 ```
 
-snapshot 是 triage 输入，不是最终证明。它帮助汇总 case 源码位置、关键词、最新 run 目录、run.log 特征和初步 bucket。聚类和计划是工作队列优化，不是最终 root cause。生成的命令不会自动执行，先人工检查，再决定是否运行。删除失败列表前必须先 dry-run；对 mismatch 列表必须使用 `--list-kind mismatch`，除非用户明确接受，否则不要用 difftest-disabled GOOD TRAP 清理 difftest mismatch。
+snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case 源码位置、关键词、最新 run 目录、run.log 特征和初步 bucket。单 case 或 log-only 任务不要求先生成 snapshot；直接看用户提供的日志/源码即可。聚类和计划是工作队列优化，不是最终 root cause。生成的命令不会自动执行，先人工检查，再决定是否运行。删除失败列表前必须先 dry-run；对 mismatch 列表必须使用 `--list-kind mismatch`，除非用户明确接受，否则不要用 difftest-disabled GOOD TRAP 清理 difftest mismatch。
 
 下面这段命令由 `python3 scripts/update_readme_commands.py` 从 `scripts/list_skill_commands.py --markdown` 生成。
 
 <!-- BEGIN GENERATED COMMANDS -->
 ### snapshot
 
-- `selfcheck-snapshot`: Create a conservative first-pass snapshot from selfcheck_fail.txt.
+- `list-snapshot`: Create a conservative first-pass snapshot from an explicit failure-list file.
+
+  ```bash
+  python3 scripts/triage_snapshot.py --list <failure-list> --hyptest-repo "$HYPTEST_REPO" --linknan-repo "$LINKNAN_HOME" --md-out <topic>_snapshot.md --json-out <topic>_snapshot.json
+  ```
+
+- `conventional-selfcheck-snapshot`: Create a snapshot from the conventional LinkNan selfcheck list when that file is the intended input.
 
   ```bash
   python3 scripts/triage_snapshot.py --list "$LINKNAN_HOME/regress_logs/selfcheck_fail.txt" --hyptest-repo "$HYPTEST_REPO" --linknan-repo "$LINKNAN_HOME" --md-out "$LINKNAN_HOME/regress_logs/selfcheck_snapshot.md" --json-out "$LINKNAN_HOME/regress_logs/selfcheck_snapshot.json"
   ```
 
-- `stuck-snapshot`: Create a conservative first-pass snapshot from stuck.txt.
+- `conventional-stuck-snapshot`: Create a snapshot from the conventional LinkNan stuck list when that file is the intended input.
 
   ```bash
   python3 scripts/triage_snapshot.py --list "$LINKNAN_HOME/regress_logs/stuck.txt" --hyptest-repo "$HYPTEST_REPO" --linknan-repo "$LINKNAN_HOME" --md-out "$LINKNAN_HOME/regress_logs/stuck_snapshot.md" --json-out "$LINKNAN_HOME/regress_logs/stuck_snapshot.json"
@@ -128,7 +173,13 @@ snapshot 是 triage 输入，不是最终证明。它帮助汇总 case 源码位
 
 ### list-update
 
-- `selfcheck-dry-run`: Preview safe removals from selfcheck_fail.txt.
+- `list-update-dry-run`: Preview safe removals from an explicit failure list.
+
+  ```bash
+  python3 scripts/update_failure_list.py --list <failure-list> --snapshot-json <topic>_snapshot.json --list-kind selfcheck --dry-run --verbose-skips
+  ```
+
+- `conventional-selfcheck-dry-run`: Preview safe removals from the conventional LinkNan selfcheck list when that file is the intended target.
 
   ```bash
   python3 scripts/update_failure_list.py --list "$LINKNAN_HOME/regress_logs/selfcheck_fail.txt" --snapshot-json <topic>_snapshot.json --list-kind selfcheck --dry-run --verbose-skips

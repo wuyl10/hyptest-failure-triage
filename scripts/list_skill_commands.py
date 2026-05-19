@@ -19,8 +19,16 @@ class Command:
 COMMANDS = [
     Command(
         "snapshot",
-        "selfcheck-snapshot",
-        "Create a conservative first-pass snapshot from selfcheck_fail.txt.",
+        "list-snapshot",
+        "Create a conservative first-pass snapshot from an explicit failure-list file.",
+        "python3 scripts/triage_snapshot.py --list <failure-list> "
+        "--hyptest-repo \"$HYPTEST_REPO\" --linknan-repo \"$LINKNAN_HOME\" "
+        "--md-out <topic>_snapshot.md --json-out <topic>_snapshot.json",
+    ),
+    Command(
+        "snapshot",
+        "conventional-selfcheck-snapshot",
+        "Create a snapshot from the conventional LinkNan selfcheck list when that file is the intended input.",
         "python3 scripts/triage_snapshot.py --list \"$LINKNAN_HOME/regress_logs/selfcheck_fail.txt\" "
         "--hyptest-repo \"$HYPTEST_REPO\" --linknan-repo \"$LINKNAN_HOME\" "
         "--md-out \"$LINKNAN_HOME/regress_logs/selfcheck_snapshot.md\" "
@@ -28,8 +36,8 @@ COMMANDS = [
     ),
     Command(
         "snapshot",
-        "stuck-snapshot",
-        "Create a conservative first-pass snapshot from stuck.txt.",
+        "conventional-stuck-snapshot",
+        "Create a snapshot from the conventional LinkNan stuck list when that file is the intended input.",
         "python3 scripts/triage_snapshot.py --list \"$LINKNAN_HOME/regress_logs/stuck.txt\" "
         "--hyptest-repo \"$HYPTEST_REPO\" --linknan-repo \"$LINKNAN_HOME\" "
         "--md-out \"$LINKNAN_HOME/regress_logs/stuck_snapshot.md\" "
@@ -74,8 +82,15 @@ COMMANDS = [
     ),
     Command(
         "list-update",
-        "selfcheck-dry-run",
-        "Preview safe removals from selfcheck_fail.txt.",
+        "list-update-dry-run",
+        "Preview safe removals from an explicit failure list.",
+        "python3 scripts/update_failure_list.py --list <failure-list> "
+        "--snapshot-json <topic>_snapshot.json --list-kind selfcheck --dry-run --verbose-skips",
+    ),
+    Command(
+        "list-update",
+        "conventional-selfcheck-dry-run",
+        "Preview safe removals from the conventional LinkNan selfcheck list when that file is the intended target.",
         "python3 scripts/update_failure_list.py --list \"$LINKNAN_HOME/regress_logs/selfcheck_fail.txt\" "
         "--snapshot-json <topic>_snapshot.json --list-kind selfcheck --dry-run --verbose-skips",
     ),

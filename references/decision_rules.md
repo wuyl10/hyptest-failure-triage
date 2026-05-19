@@ -4,6 +4,24 @@ Load this reference when classification is nontrivial, when editing tests, when
 writing a `report.md`, or when deciding whether a case can be removed from
 `selfcheck_fail.txt` / `stuck.txt` / mismatch lists.
 
+## Failure Model
+
+Use "three entry symptoms, six final classifications" during triage.
+
+Entry symptoms are the observable way a case appears in logs or lists:
+
+- `selfcheck fail`: failed assertion/selfcheck, including `HIT GOOD TRAP` with `FAILED`.
+- `stuck/no-forward-progress`: internal `50000 cycles no commit`, watchdog/no-forward-progress, or timeout that needs stuck judgment.
+- `difftest mismatch`: DUT and Spike/QEMU/golden/reference model disagree.
+
+These entry symptoms do not decide root cause by themselves. After source review,
+latest run evidence, rerun, and waveform if needed, classify into exactly one of
+the final taxonomy labels below. A selfcheck-list entry can become
+`selfcheck_bug`, `environment_blocked`, `spike_or_model_limitation`, or
+`suspected_rtl_bug`; a stuck-list entry can become `true_stuck` or
+`inconclusive`; a mismatch can become model limitation, environment issue,
+selfcheck bug, or suspected RTL bug.
+
 ## Failure Taxonomy
 
 Use these labels consistently in notes and final answers.
