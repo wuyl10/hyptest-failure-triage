@@ -1,7 +1,7 @@
 # Known Hyptest Failure Patterns
 
 Load this reference when a new failure resembles one of the patterns below.
-These notes are distilled from prior LinkNan / riscv-hyp-tests-nhv5.1 triage in
+These notes are distilled from prior platform / riscv-hyp-tests triage in
 this workspace. Treat them as starting hypotheses, not final proof.
 
 ## Class 1-5: CBO / Refill / Line Image Selfcheck Failures
@@ -64,17 +64,27 @@ Typical observable shape:
 
 Useful first checks:
 
+- First read/query the active `hyptest-workflow` spec profile PMA/PBMT/MMIO
+  matrix and project-specific responder evidence. Record whether the
+  PA/window/PMA/PBMT combination is `spec_allowed` separately from whether the
+  current testbench has a responder.
 - Determine whether the original verification target is PMA/PBMT/IO behavior.
-- Check whether LinkNan testbench has a real responder for the target PA. A legal peripheral/PMA range is not enough.
+- Check whether the active profile names a real responder for the target PA and
+  whether current source/log/waveform evidence confirms it. A legal
+  peripheral/PMA range is not enough.
 - Distinguish real internal no-commit/watchdog evidence from wall-clock timeout.
 
 Prior environment conclusion:
 
-- UART/IntrGen register responders are not equivalent to a memory-like MMIO scratch region if the test needs arbitrary byte-lane merge and whole-line readback.
+- Profile-marked register responders are not equivalent to a memory-like MMIO
+  scratch region if the test needs arbitrary byte-lane merge and whole-line
+  readback.
 - In that situation classify as `environment_blocked` or manual unless a memory-like responder exists.
 
 Avoid these mistakes:
 
+- Do not collapse `spec_allowed=false` and `testbench_responder_confirmed=false`
+  into one vague "invalid address" conclusion. They are different failure axes.
 - Do not reroute PMA/PBMT/IO validation to DRAM/dcache to make it pass.
 - Do not convert narrow byte/half/word matrix coverage to only 8B access coverage unless the original case naturally has 8B register semantics.
 - Do not classify `900s` wall timeout alone as stuck; require internal no-commit/watchdog or waveform no-forward-progress evidence.
@@ -101,7 +111,7 @@ Recommended tool behavior:
 ## Official Spike Model Gaps
 
 These patterns explain failures seen only on official Spike. They are not enough
-to label LinkNan as wrong unless LinkNan/RTL evidence independently disagrees
+to label the platform as wrong unless platform/RTL evidence independently disagrees
 with the architectural intent.
 
 ### CBO permission / A-bit classification
@@ -116,7 +126,7 @@ Recommended action:
 
 - Record as official Spike model gap when the case is meant to validate the RTL
   behavior and official Spike lacks the same CBO permission classification.
-- Keep the test only if the assertion is still valid for NHV5.1AP RTL; otherwise
+- Keep the test only if the assertion is still valid for the active spec profile; otherwise
   move it to manual/compile-only instead of changing the architectural target.
 
 ### PMA / PBMT / MMIO / cacheability model gap
@@ -140,20 +150,20 @@ Recommended action:
 Observable shape:
 
 - Official Spike traps on a custom CSR, custom instruction, platform-specific
-  privilege hook, or implementation-specific state that LinkNan supports.
+  privilege hook, or implementation-specific state that the active platform supports.
 
 Recommended action:
 
 - Record as official Spike model gap and delete from official-Spike failure
   noise when the case is outside the official model.
-- Preserve the case for LinkNan/manual validation if it is in project scope.
+- Preserve the case for platform/manual validation if it is in project scope.
 
-### NMI / double trap outside NHV5.1AP project scope
+### NMI / double trap outside active project scope
 
 Observable shape:
 
 - Cases cover NMI or double-trap behavior that is not required by the current
-  NHV5.1AP core verification scope.
+  active spec profile.
 
 Recommended action:
 
@@ -172,7 +182,7 @@ Recommended action:
 
 - Treat as official Spike model gap for official-Spike cleanup.
 - Keep only as manual/RTL-focused coverage when the timeout policy is an
-  intended LinkNan verification target.
+  intended platform verification target.
 
 ## True Stuck Versus Long Run
 

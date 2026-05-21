@@ -52,7 +52,7 @@ feature or platform model needed by the case.
 Common causes:
 
 - Spike has no cache/TLB timing model for cache-residency, CBO side effects, refill ordering, replay queues, sbuffer, uncache buffer, or response-context binding.
-- Spike/PMA model differs from LinkNan PMA/PBMT/MMIO routing.
+- Spike/PMA model differs from the current platform's PMA/PBMT/MMIO routing.
 - The case intentionally observes RTL-only behavior such as cacheline dirty preservation, MMIO response timing, internal watchdog, or replay escape.
 
 Action:
@@ -75,12 +75,12 @@ Action:
 ### `environment_blocked`
 
 The case needs a platform responder or memory-like region that the current
-LinkNan testbench does not provide.
+platform/testbench does not provide.
 
 Typical examples:
 
-- PMA/PBMT IO good path requires byte/half/word lane + whole-line readback, but available UART/IntrGen responders are only register-like.
-- Address range is legal PMA/peripheral range but current `SimMMIO` has no response path.
+- PMA/PBMT IO good path requires byte/half/word lane + whole-line readback, but the available responders are only register-like.
+- Address range is legal in the active spec profile, but the current platform profile or testbench evidence says no response path exists.
 
 Action:
 
@@ -131,13 +131,34 @@ rg -n "PBMT|Pbmt|pbmt|VSRWXPbmt|PTE_Pbmt|pbmt_hspt_to_x|PMA|PMP|cbo_|prefetch|sf
 For mismatch cases, ask:
 
 - Does the case depend on cache/TLB state, CBO implementation choice, dirty line preservation, replay queue, ROB head, sbuffer, uncache buffer, or response-context binding? Spike usually cannot model these microarchitectural states.
-- Does the case access PMA/PBMT/MMIO/device regions where Spike and LinkNan may route differently?
-- Does LinkNan provide a real responder for the target PA? A legal PMA/peripheral range is not enough; no responder can cause no response/stuck.
+- Does the case access PMA/PBMT/MMIO/device regions where Spike and the current platform may route differently?
+- Does the current platform provide a real responder for the target PA? A legal PMA/peripheral range is not enough; no responder can cause no response/stuck.
 - Does difftest compare memory that was updated through a path the golden memory does not observe?
 
 Do not use “Spike also behaves the same” as proof of RTL bug for
 microarchitectural behavior. Conversely, do not dismiss mismatches as Spike
 limitation when the source/log shows ordinary architectural DRAM behavior.
+
+For PMA/PBMT/MMIO/device/no-response cases, do the profile guard before using
+waveform or platform code to classify the failure:
+
+- Determine `spec_profile` from the workflow input or the hyptest-workflow
+  profile registry default.
+- Query/read `references/spec_profiles/<spec_profile>.md` and record the
+  PMA/PBMT/window row: `spec_allowed`, `responder_required`,
+  `spike_gate_applicable`, and default decision.
+- Treat the profile row as the only source for legality. Platform no-response
+  evidence can prove `testbench_responder_confirmed=false`, but it must not be
+  rephrased as "the PMA/PBMT combination is not allowed" unless the profile row
+  says so.
+- Then inspect the active spec profile's project-specific responder/source
+  evidence section and the current waveform/log for the response path. Exact
+  file/line checks, address windows, and known responder semantics belong in
+  `references/spec_profiles/<spec_profile>.md`, not in this generic triage rule.
+- If the profile says allowed but platform evidence shows no responder or an
+  insufficient register-like responder, classify as `environment_blocked` or
+  manual. If a concrete responder exists and supports the access semantics, keep
+  investigating selfcheck vs RTL behavior.
 
 ## Reproduce With The Right Runner
 
@@ -215,7 +236,7 @@ When editing a test case:
 - Preserve the original validation axis: same width, same alignment, same PMA/PBMT/cacheability target, same exception intent.
 - Fix address/alias consistency instead of changing expected values to match broken setup.
 - For PBMT/NC/IO alias cases, align seed path, handler path, execution path, and final check path to the intended alias/backing semantics.
-- For PMA IO/device tests, use only responders that preserve required semantics. Do not use UART/IntrGen if the case needs whole-line memory image, byte-lane merges, or arbitrary readback.
+- For PMA IO/device tests, use only responders that preserve required semantics. Do not use a profile-marked register-like responder if the case needs whole-line memory image, byte-lane merges, or arbitrary readback.
 - For width tests, use width-correct operations (`sb/sh/sw/sd`, matching load signedness) instead of a fixed wider store.
 - After patching, compile and rerun only the affected cases first.
 
@@ -327,6 +348,6 @@ Action: do not classify stuck. Continue run or inspect final status.
 ### PMA/PBMT IO Case
 
 ```text
-Finding: case requires byte/half/word lane and whole-line readback on IO-like memory, but only UART/IntrGen register responders exist.
-Action: mark environment_blocked/manual unless a memory-like MMIO scratch responder is available. Do not reroute to DRAM/dcache.
+Finding: profile row is spec-allowed, but the current target PA has no responder, or only profile-marked register-like responders while the case needs byte/half/word lane merge, arbitrary readback, or whole-line memory image.
+Action: mark environment_blocked/manual unless a memory-like MMIO scratch responder is available. Do not reroute to DRAM/dcache, and do not describe the no-response as a spec-disallowed PMA/PBMT combination unless the profile matrix says it is disallowed.
 ```
