@@ -21,134 +21,118 @@ COMMANDS = [
         "snapshot",
         "list-snapshot",
         "Create a conservative first-pass snapshot from an explicit failure-list file.",
-        "python3 scripts/triage_snapshot.py --list <failure-list> "
-        "--hyptest-repo \"$HYPTEST_REPO\" --linknan-repo \"$LINKNAN_HOME\" "
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_snapshot.py --list <failure-list> "
+        "--hyptest-repo \"$HYPTEST_HOME\" --linknan-repo \"$HYPTEST_LINKNAN_HOME\" "
         "--md-out <topic>_snapshot.md --json-out <topic>_snapshot.json",
-    ),
-    Command(
-        "snapshot",
-        "conventional-selfcheck-snapshot",
-        "Create a snapshot from the conventional LinkNan selfcheck list when that file is the intended input.",
-        "python3 scripts/triage_snapshot.py --list \"$LINKNAN_HOME/regress_logs/selfcheck_fail.txt\" "
-        "--hyptest-repo \"$HYPTEST_REPO\" --linknan-repo \"$LINKNAN_HOME\" "
-        "--md-out \"$LINKNAN_HOME/regress_logs/selfcheck_snapshot.md\" "
-        "--json-out \"$LINKNAN_HOME/regress_logs/selfcheck_snapshot.json\"",
-    ),
-    Command(
-        "snapshot",
-        "conventional-stuck-snapshot",
-        "Create a snapshot from the conventional LinkNan stuck list when that file is the intended input.",
-        "python3 scripts/triage_snapshot.py --list \"$LINKNAN_HOME/regress_logs/stuck.txt\" "
-        "--hyptest-repo \"$HYPTEST_REPO\" --linknan-repo \"$LINKNAN_HOME\" "
-        "--md-out \"$LINKNAN_HOME/regress_logs/stuck_snapshot.md\" "
-        "--json-out \"$LINKNAN_HOME/regress_logs/stuck_snapshot.json\"",
     ),
     Command(
         "planning",
         "cluster",
         "Cluster snapshot cases by conservative observable features.",
-        "python3 scripts/cluster_failures.py --snapshot-json <topic>_snapshot.json "
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/cluster_failures.py --snapshot-json <topic>_snapshot.json "
         "--mode coarse --md-out <topic>_clusters.md --json-out <topic>_clusters.json",
     ),
     Command(
         "planning",
         "plan",
         "Create an action-oriented triage plan from a snapshot.",
-        "python3 scripts/triage_plan.py --snapshot-json <topic>_snapshot.json "
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_plan.py --snapshot-json <topic>_snapshot.json "
         "--md-out <topic>_plan.md --json-out <topic>_plan.json",
     ),
     Command(
         "planning",
         "suggest-commands",
         "Generate conservative next-step commands without executing them.",
-        "python3 scripts/command_suggester.py --snapshot-json <topic>_snapshot.json "
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/command_suggester.py --snapshot-json <topic>_snapshot.json "
         "--limit 5 --jobs 20 --timeout 900 "
         "--md-out <topic>_commands.md --json-out <topic>_commands.json",
     ),
     Command(
         "report",
         "case-report",
-        "Generate an editable report.md skeleton for a representative case.",
-        "python3 scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json "
-        "--case <case_name> --title '<topic> triage report' --out <report-dir>/<topic>/report.md",
+        "Generate an editable Chinese report.md skeleton for a representative case.",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json "
+        "--case <case_name> --title '<topic> 失败分析报告' --out <report-dir>/<topic>/report.md",
     ),
     Command(
         "report",
         "action-report",
-        "Generate a class-level report skeleton for a broad action group.",
-        "python3 scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json "
-        "--action selfcheck_fail --max-cases 5 --title '<topic> triage report' "
+        "Generate a class-level Chinese report.md skeleton for a broad action group.",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json "
+        "--action selfcheck_fail --max-cases 5 --title '<topic> 失败分析报告' "
+        "--out <report-dir>/<topic>/report.md",
+    ),
+    Command(
+        "report",
+        "waveform-report-link",
+        "Generate a Chinese report.md that cites waveform-debug's report.md.",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json "
+        "--action waveform --title '<topic> 失败分析报告' "
+        "--waveform-report <waveform-report-dir>/report.md "
         "--out <report-dir>/<topic>/report.md",
     ),
     Command(
         "list-update",
         "list-update-dry-run",
         "Preview safe removals from an explicit failure list.",
-        "python3 scripts/update_failure_list.py --list <failure-list> "
-        "--snapshot-json <topic>_snapshot.json --list-kind selfcheck --dry-run --verbose-skips",
-    ),
-    Command(
-        "list-update",
-        "conventional-selfcheck-dry-run",
-        "Preview safe removals from the conventional LinkNan selfcheck list when that file is the intended target.",
-        "python3 scripts/update_failure_list.py --list \"$LINKNAN_HOME/regress_logs/selfcheck_fail.txt\" "
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_failure_list.py --list <failure-list> "
         "--snapshot-json <topic>_snapshot.json --list-kind selfcheck --dry-run --verbose-skips",
     ),
     Command(
         "list-update",
         "mismatch-dry-run",
         "Preview safe removals from a difftest mismatch list; difftest-enabled evidence is required.",
-        "python3 scripts/update_failure_list.py --list <mismatch-list> "
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_failure_list.py --list <mismatch-list> "
         "--snapshot-json <topic>_snapshot.json --list-kind mismatch --dry-run --verbose-skips",
     ),
     Command(
         "compare",
         "compare-snapshots",
         "Compare two snapshots after reruns or LinkNan/dependency updates.",
-        "python3 scripts/compare_snapshots.py --old <old>_snapshot.json --new <new>_snapshot.json "
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/compare_snapshots.py --old <old>_snapshot.json --new <new>_snapshot.json "
         "--md-out <topic>_compare.md --json-out <topic>_compare.json",
     ),
     Command(
         "validation",
         "selftest",
         "Run the bundled synthetic self-test suite.",
-        "python3 scripts/selftest.py",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/selftest.py",
     ),
     Command(
         "validation",
         "log-pattern-eval",
         "Check realistic run.log / Spike snippet classifications.",
-        "python3 scripts/eval_log_patterns.py",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/eval_log_patterns.py",
     ),
     Command(
         "validation",
         "official-spike-eval",
         "Check official Spike known model-gap classifications.",
-        "python3 scripts/eval_official_spike_patterns.py",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/eval_official_spike_patterns.py",
     ),
     Command(
         "maintenance",
         "readme-check",
         "Check README generated commands match list_skill_commands.py.",
-        "python3 scripts/check_readme_commands.py",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_readme_commands.py",
     ),
     Command(
         "maintenance",
         "readme-update",
         "Refresh README generated command block from list_skill_commands.py.",
-        "python3 scripts/update_readme_commands.py",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_readme_commands.py",
     ),
     Command(
         "maintenance",
         "resource-index-check",
         "Check resource_index.md covers references, scripts, fixtures, and README anchors.",
-        "python3 scripts/check_resource_index.py",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_resource_index.py",
     ),
     Command(
         "maintenance",
         "fixture-manifest-check",
         "Check fixture manifests match the log files on disk.",
-        "python3 scripts/check_fixture_manifests.py",
+        "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_fixture_manifests.py",
     ),
 ]
 

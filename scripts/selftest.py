@@ -25,8 +25,8 @@ CHECK_README_COMMANDS = SCRIPT_DIR / "check_readme_commands.py"
 CHECK_FIXTURE_MANIFESTS = SCRIPT_DIR / "check_fixture_manifests.py"
 
 
-def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True, check=True)
+def run(cmd: list[str], *, expect_success: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, text=True, capture_output=True, check=expect_success)
 
 
 def write_case(repo: Path, name: str, body: str, source_dir: str = "ai_test_cases") -> None:
@@ -325,20 +325,68 @@ def main() -> int:
                 "--case",
                 "case_selfcheck_fail",
                 "--title",
-                "Synthetic selfcheck report",
+                "Synthetic selfcheck 失败分析报告",
+                "--waveform-report",
+                str(root / "waveform" / "report.md"),
             ]
         )
         report_text = report_md.read_text()
         for expected in [
-            "# Synthetic selfcheck report",
-            "## Scene And Intent",
+            "# Synthetic selfcheck 失败分析报告",
+            "## 错误分类与代表用例",
+            "representative_case",
+            "#### 本来预期",
+            "#### 初步判断",
+            "## 场景与验证意图",
             "case_selfcheck_fail",
             "target word preserves seed image FAILED",
-            "## Classification",
-            "## Verification",
+            "## Profile Guard",
+            "pa/window",
+            "profile_not_impl_reason",
+            "platform/source evidence",
+            "wave/log evidence",
+            "## 波形报告",
+            "waveform/report.md",
+            "## 待人工审核问题",
+            "## 分类",
+            "## 验证",
         ]:
             if expected not in report_text:
                 raise AssertionError(f"report template missing {expected!r}")
+
+        bad_report = root / "triage.md"
+        failed = run(
+            [
+                sys.executable,
+                str(REPORT_TEMPLATE),
+                "--snapshot-json",
+                str(snapshot_json),
+                "--out",
+                str(bad_report),
+                "--case",
+                "case_selfcheck_fail",
+            ],
+            expect_success=False,
+        )
+        if failed.returncode == 0 or "must be named report.md" not in failed.stderr:
+            raise AssertionError("report template should reject non-report.md output")
+
+        wave_report_md = root / "wave_report" / "report.md"
+        run(
+            [
+                sys.executable,
+                str(REPORT_TEMPLATE),
+                "--snapshot-json",
+                str(snapshot_json),
+                "--out",
+                str(wave_report_md),
+                "--action",
+                "waveform",
+            ]
+        )
+        wave_report_text = wave_report_md.read_text()
+        if "case_fsdb_error_but_pass" not in wave_report_text:
+            raise AssertionError("waveform action should include fsdb/wave tagged cases")
 
         old_snapshot = json.loads(snapshot_json.read_text())
         new_snapshot = json.loads(snapshot_json.read_text())
@@ -375,13 +423,19 @@ def main() -> int:
         assert_eq(compare_data["summary"]["added_case"], 1, "compare added case")
         assert_eq(compare_data["summary"]["status_changed"], 2, "compare status changes")
 
+        suggest_snapshot = json.loads(snapshot_json.read_text())
+        by_suggest_case = {item["case"]: item for item in suggest_snapshot}
+        by_suggest_case["case_selfcheck_fail"]["runs"][0]["evidence_tags"] = ["fsdb"]
+        by_suggest_case["case_selfcheck_fail"]["runs"][0]["fsdb_enabled"] = True
+        suggest_snapshot_json = root / "suggest_snapshot.json"
+        suggest_snapshot_json.write_text(json.dumps(suggest_snapshot))
         suggest_md = root / "suggest.md"
         run(
             [
                 sys.executable,
                 str(SUGGEST),
                 "--snapshot-json",
-                str(snapshot_json),
+                str(suggest_snapshot_json),
                 "--hyptest-repo",
                 str(repo),
                 "--linknan-repo",
@@ -397,15 +451,22 @@ def main() -> int:
             "### source_rerun",
             "### stuck_debug",
             "### verify_remove",
-            "missing LINKNAN_HOME",
-            "missing DIFFTEST_REF_SO",
-            "compile_elf.py --plat linknan --include-commented --name case_selfcheck_fail",
-            "get_result.py --platform linknan --case case_selfcheck_fail --jobs 20 --timeout 900",
+            "missing HYPTEST_LINKNAN_HOME",
+            "missing HYPTEST_DIFFTEST_REF_SO",
+            "runner_mode=linknan-no-diff",
+            "Do not hardcode a no-diff CLI flag",
+            "compile_elf.py --plat linknan --include-commented --name case_manual_selfcheck_fail",
+            "get_result.py --platform linknan --case case_manual_selfcheck_fail --jobs 20 --timeout 900",
             "update_failure_list.py",
             "timeout 900s or more",
         ]:
             if expected not in suggest_text:
                 raise AssertionError(f"command suggestions missing {expected!r}")
+        if "### write_wave_report" not in suggest_text:
+            raise AssertionError("command suggestions should route fsdb-tagged selfcheck failures to write_wave_report")
+        stuck_section = suggest_text.split("### stuck_debug", 1)[1].split("###", 1)[0]
+        if "missing HYPTEST_DIFFTEST_REF_SO" in stuck_section:
+            raise AssertionError("linknan-no-diff stuck debug suggestions must not require difftest ref")
 
         dry = run(
             [
@@ -453,6 +514,45 @@ def main() -> int:
                 "mismatch dry-run should remove only the difftest-enabled clean pass, got:\n"
                 f"{mismatch_dry.stdout}"
             )
+        mismatch_override_failed = run(
+            [
+                sys.executable,
+                str(UPDATE),
+                "--list",
+                str(root / "failures.txt"),
+                "--snapshot-json",
+                str(snapshot_json),
+                "--list-kind",
+                "mismatch",
+                "--allow-difftest-disabled",
+                "--dry-run",
+            ],
+            expect_success=False,
+        )
+        if (
+            mismatch_override_failed.returncode == 0
+            or "requires --difftest-disabled-override-reason" not in mismatch_override_failed.stderr
+        ):
+            raise AssertionError("dangerous mismatch override should require an explicit reason")
+
+        mismatch_override = run(
+            [
+                sys.executable,
+                str(UPDATE),
+                "--list",
+                str(root / "failures.txt"),
+                "--snapshot-json",
+                str(snapshot_json),
+                "--list-kind",
+                "mismatch",
+                "--allow-difftest-disabled",
+                "--difftest-disabled-override-reason",
+                "user explicitly accepts RTL-only cleanup for this synthetic test",
+                "--dry-run",
+            ]
+        )
+        if "WARNING: difftest-disabled/RTL-only evidence was accepted" not in mismatch_override.stdout:
+            raise AssertionError("dangerous mismatch override should print a warning")
 
         run(
             [

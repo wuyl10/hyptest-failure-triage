@@ -29,6 +29,7 @@ def trusted_pass(run: dict, list_kind: str, allow_difftest_disabled: bool) -> tu
     if list_kind == "mismatch" and not run.get("difftest_enabled"):
         if not allow_difftest_disabled:
             return False, "mismatch cleanup requires difftest-enabled evidence"
+        return True, "dangerous override: difftest-disabled mismatch cleanup accepted by explicit user reason"
     return True, "trusted pass"
 
 
@@ -109,7 +110,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--allow-difftest-disabled",
         action="store_true",
-        help="Allow difftest-disabled GOOD TRAP evidence even for --list-kind mismatch.",
+        help=(
+            "Compatibility flag only. For --list-kind mismatch this requires "
+            "--difftest-disabled-override-reason and should be used only after "
+            "the user explicitly accepts RTL-only/no-diff evidence."
+        ),
+    )
+    parser.add_argument(
+        "--difftest-disabled-override-reason",
+        help=(
+            "Required with --allow-difftest-disabled for mismatch cleanup; "
+            "record the user's explicit reason for accepting no-diff evidence."
+        ),
     )
     parser.add_argument(
         "--verbose-skips",
@@ -121,6 +133,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.allow_difftest_disabled and args.list_kind == "mismatch":
+        reason = (args.difftest_disabled_override_reason or "").strip()
+        if not reason:
+            raise SystemExit(
+                "--allow-difftest-disabled for --list-kind mismatch requires "
+                "--difftest-disabled-override-reason. This override is dangerous: "
+                "difftest-disabled/RTL-only PASS normally cannot clear mismatch lists."
+            )
     passed, skipped, pass_reasons = load_passed_cases(
         args.snapshot_json,
         args.list_kind,
@@ -131,6 +151,9 @@ def main() -> int:
     print(f"trusted_pass_in_snapshot={len(passed)}")
     print(f"skipped_in_snapshot={len(skipped)}")
     print(f"removed_from_list={len(removed)}")
+    if args.allow_difftest_disabled and args.list_kind == "mismatch":
+        print("WARNING: difftest-disabled/RTL-only evidence was accepted for mismatch cleanup by explicit override.")
+        print(f"override_reason={args.difftest_disabled_override_reason.strip()}")
     for case in removed:
         print(f"{case} # {pass_reasons.get(case, 'trusted pass')}")
     if args.verbose_skips and skipped:

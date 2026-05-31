@@ -22,13 +22,17 @@ def latest_run(item: dict[str, Any]) -> dict[str, Any]:
     return runs[0] if runs else {}
 
 
+def has_waveform_evidence(item: dict[str, Any]) -> bool:
+    tags = set(latest_run(item).get("evidence_tags") or [])
+    return bool(tags & {"wave-run", "fsdb", "waveform"})
+
+
 def classify_action(item: dict[str, Any]) -> tuple[str, str]:
     run = latest_run(item)
     status = run.get("status", "no_run")
     bucket = item.get("preliminary_bucket", "unknown")
     source = item.get("source") or {}
     has_pbmt = bool(source.get("exact_pbmt_hits"))
-    tags = set(run.get("evidence_tags") or [])
 
     if status == "passed_good_trap":
         if run.get("has_failed_assert") or run.get("has_mismatch") or run.get("has_internal_stuck"):
@@ -43,8 +47,8 @@ def classify_action(item: dict[str, Any]) -> tuple[str, str]:
             return "mismatch_model_check", "PBMT/PMA source tags; check Spike/platform model before RTL bug"
         return "mismatch_debug", "difftest mismatch on latest run"
     if status == "selfcheck_fail":
-        if "wave-run" in tags:
-            return "waveform_report_update", "latest failing evidence includes waveform/FSDB"
+        if has_waveform_evidence(item):
+            return "waveform_report", "latest failing evidence includes waveform/FSDB"
         return "source_or_rerun", "selfcheck failed; inspect source intent and rerun representative"
     if status == "timeout_inconclusive":
         return "long_run_inconclusive", "timeout without internal stuck evidence"
@@ -64,7 +68,7 @@ def summarize(snapshot: list[dict[str, Any]]) -> list[dict[str, Any]]:
     order = [
         "remove_candidate",
         "source_or_rerun",
-        "waveform_report_update",
+        "waveform_report",
         "mismatch_model_check",
         "mismatch_debug",
         "stuck_debug",

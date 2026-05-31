@@ -5,28 +5,25 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable
 
 
-def env_path(*names: str) -> Path | None:
-    for name in names:
-        value = os.environ.get(name)
-        if value:
-            return Path(value).expanduser()
+def env_path(name: str) -> Path | None:
+    value = os.environ.get(name)
+    if value:
+        return Path(value).expanduser()
     return None
 
 
 def require_path(
     value: Path | None,
     option_name: str,
-    env_names: Iterable[str],
+    env_name: str,
     description: str,
 ) -> Path:
     if value is not None:
         return value.expanduser().resolve()
-    env_text = " or ".join(env_names)
     raise SystemExit(
-        f"missing {description}: pass {option_name} or set {env_text}"
+        f"missing {description}: pass {option_name} or set {env_name}"
     )
 
 

@@ -40,7 +40,7 @@ def main() -> int:
     if actual != expected:
         print(
             "README generated command block is out of date; run "
-            "python3 scripts/update_readme_commands.py",
+            "python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_readme_commands.py",
             file=sys.stderr,
         )
         return 1

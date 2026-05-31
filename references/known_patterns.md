@@ -8,7 +8,7 @@ this workspace. Treat them as starting hypotheses, not final proof.
 
 Typical observable shape:
 
-- `selfcheck_fail.txt` contains many HS cache/CBO/prefetch/sbuffer/AMO cases.
+- The user-provided selfcheck failure list contains many HS cache/CBO/prefetch/sbuffer/AMO cases.
 - Latest runs may be `difftest-disabled`; some have `fsdb,wave-run`.
 - Source has `exact_pbmt_hits=0`, so do not explain these as PBMT=NC or PBMT=IO behavior without new evidence.
 - Failures mention preserved adjacent word, old image, refill image, zero line, overlay, prefetch, AMO replay, or trap-entry same-block `cbo.inval`.
@@ -18,7 +18,7 @@ Useful first checks:
 - Run `triage_snapshot.py`, `cluster_failures.py --mode coarse`, and `triage_plan.py`.
 - Confirm the representative source really uses cacheable DRAM-like pages, not PBMT/PMA IO.
 - Check whether latest evidence is difftest-disabled waveform evidence before using it for mismatch cleanup.
-- If writing a report, start from `triage_report_template.py --action waveform_report_update` for wave-backed representatives.
+- If writing a report, start from `triage_report_template.py --action waveform` for wave-backed representatives.
 
 Prior working hypothesis:
 
@@ -42,7 +42,7 @@ Useful first checks:
 
 - Inspect the test source to ensure seed path, faulting path, handler path, and final check observe the same intended alias/backing semantics.
 - Confirm whether the handler operation is byte/half/word/narrow and whether final check uses the same intended address semantics.
-- If the source has already been patched to make alias/backing semantics consistent, require a clean rerun before deleting from `selfcheck_fail.txt`.
+- If the source has already been patched to make alias/backing semantics consistent, require a clean rerun before deleting from the user-provided selfcheck failure list.
 
 Prior fix pattern:
 

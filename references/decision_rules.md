@@ -1,8 +1,8 @@
 # Hyptest Failure Triage Decision Rules
 
 Load this reference when classification is nontrivial, when editing tests, when
-writing a `report.md`, or when deciding whether a case can be removed from
-`selfcheck_fail.txt` / `stuck.txt` / mismatch lists.
+writing a `report.md`, or when deciding whether a case can be removed from a
+user-provided selfcheck/stuck/mismatch failure list.
 
 ## Failure Model
 
@@ -12,7 +12,7 @@ Entry symptoms are the observable way a case appears in logs or lists:
 
 - `selfcheck fail`: failed assertion/selfcheck, including `HIT GOOD TRAP` with `FAILED`.
 - `stuck/no-forward-progress`: internal `50000 cycles no commit`, watchdog/no-forward-progress, or timeout that needs stuck judgment.
-- `difftest mismatch`: DUT and Spike/QEMU/golden/reference model disagree.
+- `difftest mismatch`: DUT and Spike/golden/reference model disagree.
 
 These entry symptoms do not decide root cause by themselves. After source review,
 latest run evidence, rerun, and waveform if needed, classify into exactly one of
@@ -75,17 +75,26 @@ Action:
 ### `environment_blocked`
 
 The case needs a platform responder or memory-like region that the current
-platform/testbench does not provide.
+platform/testbench does not provide, or it targets a feature/corner that the
+active `hyptest-workflow` profile says the current RTL/Nanhu implementation does
+not support.
 
 Typical examples:
 
 - PMA/PBMT IO good path requires byte/half/word lane + whole-line readback, but the available responders are only register-like.
 - Address range is legal in the active spec profile, but the current platform profile or testbench evidence says no response path exists.
+- The active profile or `query_spec_profile.py` classifies the target as
+  `nanhu_not_impl`, unimplemented, unsupported, or outside the current RTL
+  implementation scope.
 
 Action:
 
 - Do not fake pass by moving to DRAM/dcache if PMA/PBMT/IO is the test target.
-- Mark blocked/manual and state exactly what responder is missing.
+- Do not fake pass by weakening or retargeting an unimplemented RTL feature into
+  an implemented neighboring scenario unless the user explicitly changes the test
+  intent.
+- Mark blocked/manual and state exactly what responder, device, runtime support,
+  or RTL implementation support is missing.
 
 ## Evidence Trust Levels
 
@@ -108,6 +117,47 @@ wall-clock timeout only
 
 `triage_snapshot.py` emits `evidence_tags` and run flags for this reason. Use
 them as a guardrail, not as a replacement for reading the relevant log/source.
+
+## Runner And Difftest Mode Handoff
+
+When triage needs a rerun, hand the request to `hyptest-workflow` with exactly
+one of these runner modes. This skill decides why the run is needed; workflow
+executes the compile/run command and records artifacts.
+
+```text
+spike-gate
+=> compile_elf.py --plat spike
+=> get_result.py --platform spike
+Use for ordinary architecture/default gate evidence when the active profile says
+`spike_gate_applicable=true`.
+
+linknan-difftest
+=> compile_elf.py --plat linknan
+=> get_result.py --platform linknan
+=> difftest enabled
+Use for difftest mismatch reproduction, mismatch cleanup, or DUT/reference
+alignment evidence.
+
+linknan-no-diff
+=> compile_elf.py --plat linknan
+=> get_result.py --platform linknan
+=> difftest disabled / no-diff per current LinkNan runner support
+Use for RTL-only selfcheck, waveform/FSDB, no-response/stuck, responder evidence,
+or model-gap observation where Spike/golden would block the target observation.
+```
+
+The only platform choices for this skill are Spike and LinkNan.
+
+Use `linknan-no-diff` when the question is "what does the RTL/test selfcheck do
+without the reference model stopping the run?" Examples include CBO/refill line
+image, cache/TLB/sbuffer/replay/MSHR state, PMA/PBMT/MMIO responder behavior,
+FSDB first-bad-cycle work, and no-response/stuck triage.
+
+Use `linknan-difftest` when the question is "does the DUT still disagree with
+the reference model?" This is mandatory for clearing difftest mismatch lists.
+
+Never use `linknan-no-diff` evidence to clear a mismatch list, prove a mismatch
+is fixed, or convert a profile-marked unimplemented target into a PASS.
 
 ## Reconstruct Test Intent From Source
 
@@ -147,6 +197,10 @@ waveform or platform code to classify the failure:
 - Query/read `references/spec_profiles/<spec_profile>.md` and record the
   PMA/PBMT/window row: `spec_allowed`, `responder_required`,
   `spike_gate_applicable`, and default decision.
+- Also record whether the target feature/corner is within current RTL/Nanhu
+  implemented scope. If the profile or query output marks it as `nanhu_not_impl`,
+  unimplemented, unsupported, or outside implementation scope, the case cannot be
+  declared resolved by changing expectations or avoiding the feature.
 - Treat the profile row as the only source for legality. Platform no-response
   evidence can prove `testbench_responder_confirmed=false`, but it must not be
   rephrased as "the PMA/PBMT combination is not allowed" unless the profile row
@@ -159,25 +213,39 @@ waveform or platform code to classify the failure:
   insufficient register-like responder, classify as `environment_blocked` or
   manual. If a concrete responder exists and supports the access semantics, keep
   investigating selfcheck vs RTL behavior.
+- If the profile says the targeted RTL capability is not implemented, classify as
+  `environment_blocked` / manual implementation gap, keep the original intent
+  visible, and do not remove the case from failure/mismatch/stuck lists as a
+  fixed case unless the user explicitly retargets it and the new implemented
+  target has its own clean evidence.
 
 ## Reproduce With The Right Runner
 
 Use the smallest batch that answers the question. Keep concurrency high but
-bounded:
+bounded. For LinkNan evidence, choose `linknan-difftest` or `linknan-no-diff`
+according to the handoff rules above:
 
-```bash
-cd <hyptest-repo>
-test -n "${LINKNAN_HOME:-}" || { echo "missing LINKNAN_HOME"; exit 2; }
-test -n "${DIFFTEST_REF_SO:-}" || { echo "missing DIFFTEST_REF_SO"; exit 2; }
-python3 compile_elf.py --plat linknan --include-commented --name <case>
-python3 get_result.py --platform linknan --case <case> --jobs <1..20> --timeout 900
+```text
+runner_mode: spike-gate | linknan-difftest | linknan-no-diff
+compile_plat: spike | linknan
+run_platform: spike | linknan
+difftest_mode: not-applicable | enabled | disabled
+include_commented: true | false
+purpose:
+cleanup_allowed: true | false
 ```
 
 Rules:
 
 - Use `--jobs` up to 20 when running multiple independent cases.
 - Use at least `--timeout 900` for LinkNan runs unless the user explicitly requests otherwise.
-- For Spike-only triage, compile/run Spike separately and compare logs.
+- For Spike gate triage, compile/run Spike separately and compare logs.
+- For `linknan-difftest`, the workflow runner must use difftest-enabled
+  evidence; `HYPTEST_DIFFTEST_REF_SO` is required.
+- For `linknan-no-diff`, do not invent or hardcode a no-diff CLI flag in this
+  skill. Tell `$hyptest-workflow` `runner_mode=linknan-no-diff` and
+  `difftest_mode=disabled`; workflow chooses the current supported runner
+  mechanism and records the artifacts.
 - A timeout result is “inconclusive long run” unless internal stuck/watchdog/no-commit evidence appears in `run.log`.
 
 ## Waveform Evidence
@@ -188,6 +256,46 @@ Trigger waveform analysis when:
 - A suspected RTL bug requires signal-level evidence.
 - A 50000-cycle stuck needs no-response vs deadlock vs progress classification.
 - The user asks to “看波形” or “具体定位”.
+- PMA/PBMT/MMIO/Device responder behavior must be proven from request/response
+  signals after the active profile guard.
+- A difftest mismatch needs first-divergence or protocol evidence beyond the
+  final mismatch line.
+
+Do not trigger waveform analysis when source/log evidence is already sufficient:
+
+- Obvious source-level `selfcheck_bug`, such as wrong seed/check address or
+  impossible expected cause.
+- Active profile says the target is `nanhu_not_impl` / unsupported /
+  unimplemented and no signal evidence is needed to prove that classification.
+- Failure-list cleanup where a clean trusted rerun is the only required evidence.
+- Difftest mismatch cleanup; use `linknan-difftest` clean rerun evidence instead.
+- Wall-clock timeout only, with no internal no-commit/watchdog and no waveform
+  artifact to inspect.
+
+Before calling `$waveform-debug`, prepare this handoff so signal-level work does
+not lose source/spec context:
+
+```text
+case_name:
+spec_profile:
+runner_mode:
+difftest_mode:
+run_dir:
+run.log:
+assert.log:
+waveform_path:
+source_file:
+source_intent:
+expected_behavior:
+observed_failure:
+profile_guard_summary:
+  spec_allowed:
+  responder_required:
+  spike_gate_applicable:
+  rtl_implemented:
+  testbench_responder_confirmed:
+why_waveform_needed:
+```
 
 Waveform report must include:
 
@@ -210,11 +318,14 @@ Spike mismatch explained by missing cache/TLB/PMA/PBMT/MMIO model, RTL-only pass
 PMA/PBMT/IO case needs a memory-like responder and none exists
 => environment_blocked, keep/manual; do not reroute to DRAM/dcache
 
+active profile says target feature/corner is not implemented by current RTL/Nanhu
+=> environment_blocked/manual implementation gap; do not fake PASS or clear as fixed
+
 logs/waveform show incorrect RTL behavior under valid test expectation
 => suspected_rtl_bug, write report.md, keep in failure list unless user wants separate bug list
 
 internal 50000 no-commit/watchdog on a valid responsive target
-=> true stuck, write root-cause report; keep in stuck.txt
+=> true stuck, write root-cause report; keep in the user-provided stuck list
 
 wall timeout only, commits still happening, or assertions still printing
 => long running/inconclusive, do not classify stuck
@@ -227,6 +338,7 @@ PBMT/PMA IO case: still uses IO/PMA target, same access widths, no DRAM/dcache r
 Narrow-width case: still covers byte/half/word and signedness/lane behavior.
 CBO/refill case: still performs cbo.inval/refill and checks preserved/zeroed line image per intent.
 Trap-entry case: handler path and final check observe the same intended backing semantics.
+Profile-not-implemented case: still names the unimplemented target and remains blocked/manual unless explicitly retargeted.
 ```
 
 ## Patch Policy For Test Fixes
@@ -238,11 +350,25 @@ When editing a test case:
 - For PBMT/NC/IO alias cases, align seed path, handler path, execution path, and final check path to the intended alias/backing semantics.
 - For PMA IO/device tests, use only responders that preserve required semantics. Do not use a profile-marked register-like responder if the case needs whole-line memory image, byte-lane merges, or arbitrary readback.
 - For width tests, use width-correct operations (`sb/sh/sw/sd`, matching load signedness) instead of a fixed wider store.
+- For profile-not-implemented cases, do not edit the case to avoid the
+  unimplemented feature and then claim the original failure is fixed. Either
+  preserve the intent and mark blocked/manual, or explicitly retarget the case as
+  a different implemented scenario with new source/rerun evidence.
+- If a patch/rerun exposes a new or remaining behavior that looks like a valid
+  test expectation but incorrect RTL behavior, stop treating the work as simple
+  selfcheck cleanup. Record a "待人工审核问题" item in the Chinese `report.md`
+  with source/log/run-dir evidence, keep the case out of list-removal decisions,
+  and either queue it for later human review or call `$waveform-debug` first if
+  first-bad-cycle/protocol/no-response evidence is needed.
+- Do not hide a suspected RTL behavior by changing the expected value, rerouting
+  the address class, disabling the checked path, or converting the case to a
+  weaker implemented scenario unless the user explicitly asks for a separate
+  retargeted case and the original suspect remains recorded.
 - After patching, compile and rerun only the affected cases first.
 
 ## Safe List Updates
 
-Only remove from `selfcheck_fail.txt` or `stuck.txt` after rerun evidence:
+Only remove from a user-provided selfcheck/stuck/mismatch failure list after rerun evidence:
 
 ```text
 HIT GOOD TRAP
@@ -255,55 +381,75 @@ no internal watchdog/no-commit stuck
 Preferred safe path:
 
 ```bash
-python3 <skill-dir>/scripts/triage_snapshot.py \
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_snapshot.py \
   --list <failure-list> \
   --md-out <report-dir>/<topic>_snapshot.md \
   --json-out <report-dir>/<topic>_snapshot.json
 
-python3 <skill-dir>/scripts/update_failure_list.py \
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_failure_list.py \
   --list <failure-list> \
   --snapshot-json <report-dir>/<topic>_snapshot.json \
-  --list-kind selfcheck \
+  --list-kind selfcheck|stuck|mismatch \
   --dry-run
 ```
 
 If dry-run output is correct, run the same updater without `--dry-run`.
 Use `--verbose-skips` when the user asks why a case was not removed.
+For `--list-kind mismatch`, do not use difftest-disabled evidence unless the
+user explicitly accepts RTL-only cleanup for that list. The compatibility
+override requires both `--allow-difftest-disabled` and
+`--difftest-disabled-override-reason <reason>` so the report can record why a
+normally unsafe cleanup was accepted.
 
 ## Report Template
 
-Use this structure for nontrivial triage:
+Use `scripts/triage_report_template.py` as the single source of truth for the
+editable report skeleton. The final failure-triage report must be a Chinese
+Markdown file named exactly `report.md`; the script enforces that filename and
+seeds the current required sections.
 
-```markdown
-# <case/class/topic> triage report
+Required sections in the final report:
 
-## Summary
-One-paragraph conclusion: selfcheck_bug / spike_or_model_limitation / suspected_rtl_bug / environment_blocked / true_stuck / inconclusive.
+- `总结`
+- `Case 列表`
+- `错误分类与代表用例`
+- `场景与验证意图`
+- `失败现象`
+- `源码分析`
+- `Profile Guard`
+- `波形报告`
+- `待人工审核问题`
+- `分类`
+- `处理动作`
+- `验证`
 
-## Cases
-List affected cases and current status.
+The `错误分类与代表用例` section must pick representative case(s) per
+failure class/cluster and explain scenario, original expectation, observed
+failure, and preliminary judgment. Do not treat cluster membership as the final
+root cause without source, log, profile, and waveform evidence when needed.
 
-## Scene And Intent
-What the case is trying to verify, including mode, address type, width/alignment, and expected behavior.
+The `Profile Guard` section is mandatory for PMA/PBMT/MMIO/Device/responder,
+no-response, or profile implementation-scope cases. It must include at least:
 
-## Observed Failure
-Relevant run.log lines, mismatch fields, failed asserts, or stuck evidence.
-
-## Source Analysis
-Important source snippets by file:line and helper behavior. Explain seed/execute/handler/check paths.
-
-## Waveform Evidence
-Only if used. Include first bad time/cycle, key signals, and why later symptoms are secondary.
-
-## Classification
-State the selected taxonomy label and why alternatives were rejected.
-
-## Action
-Patch performed, report-only bug, manual/blocked decision, or required platform support.
-
-## Verification
-Commands run, result log paths, PASS/FAIL/GOOD TRAP evidence, and list updates.
+```text
+spec_profile:
+pa/window:
+pma:
+pbmt:
+spec_allowed:
+responder_required:
+spike_gate_applicable:
+rtl_implemented:
+profile_not_impl_reason:
+testbench_responder_confirmed:
+platform/source evidence:
+wave/log evidence:
+classification:
 ```
+
+If waveform-debug is used, waveform-debug should produce its own `report.md`;
+cite that exact path in the triage report's `波形报告` section and summarize
+only the key first-bad-cycle evidence.
 
 ## Final Answer Format
 
@@ -335,7 +481,7 @@ snapshot/report path and summarize the decisions.
 ```text
 Finding: handler used PBMT=NC alias, but seed/final check used a different backing PA.
 Action: make seed, handler, final check use the same intended alias/backing semantics.
-Verification: compile linknan, run LinkNan, GOOD TRAP with no FAILED; remove from selfcheck_fail.txt.
+Verification: compile linknan, run LinkNan, GOOD TRAP with no FAILED; remove from the user-provided selfcheck failure list.
 ```
 
 ### Stuck Triage

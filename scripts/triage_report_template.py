@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create an editable report.md skeleton from a hyptest triage snapshot."""
+"""Create an editable Chinese report.md skeleton from a hyptest triage snapshot."""
 
 from __future__ import annotations
 
@@ -21,6 +21,11 @@ def latest_run(item: dict[str, Any]) -> dict[str, Any]:
     return runs[0] if runs else {}
 
 
+def has_waveform_evidence(item: dict[str, Any]) -> bool:
+    tags = set(latest_run(item).get("evidence_tags") or [])
+    return bool(tags & {"wave-run", "fsdb", "waveform"})
+
+
 def select_cases(snapshot: list[dict[str, Any]], cases: list[str], action: str | None) -> list[dict[str, Any]]:
     if cases:
         wanted = set(cases)
@@ -36,7 +41,7 @@ def select_cases(snapshot: list[dict[str, Any]], cases: list[str], action: str |
             tags = set(latest_run(item).get("evidence_tags") or [])
             if action == "selfcheck_fail" and status == "selfcheck_fail":
                 selected.append(item)
-            elif action == "waveform_report_update" and status == "selfcheck_fail" and "wave-run" in tags:
+            elif action in {"waveform", "waveform_report_update"} and has_waveform_evidence(item):
                 selected.append(item)
             elif action == "mismatch" and status == "difftest_mismatch":
                 selected.append(item)
@@ -64,21 +69,24 @@ def write_report(
     selected: list[dict[str, Any]],
     title: str,
     max_cases: int,
+    waveform_reports: list[Path],
 ) -> None:
+    if path.name != "report.md":
+        raise SystemExit(f"triage report output must be named report.md: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     lines.append(f"# {title}")
     lines.append("")
-    lines.append("## Summary")
+    lines.append("## 总结")
     lines.append("")
-    lines.append("TBD: one-paragraph conclusion. Choose one label: `selfcheck_bug`, `spike_or_model_limitation`, `suspected_rtl_bug`, `environment_blocked`, `true_stuck`, or `inconclusive`.")
+    lines.append("待填写：用一段中文给出最终结论。分类必须选择一个：`selfcheck_bug`、`spike_or_model_limitation`、`suspected_rtl_bug`、`environment_blocked`、`true_stuck` 或 `inconclusive`。")
     lines.append("")
-    lines.append("## Cases")
+    lines.append("## Case 列表")
     lines.append("")
     lines.append(f"- snapshot: `{snapshot_path}`")
     lines.append(f"- selected_cases: `{len(selected)}`")
     lines.append("")
-    lines.append("| Case | Latest status | Evidence tags | Source | Latest run |")
+    lines.append("| Case | 最新状态 | 证据标签 | 源码位置 | 最新运行 |")
     lines.append("| --- | --- | --- | --- | --- |")
     for item in selected:
         run = latest_run(item)
@@ -98,15 +106,42 @@ def write_report(
             + " |"
         )
     lines.append("")
-    lines.append("## Scene And Intent")
+    lines.append("## 错误分类与代表用例")
     lines.append("")
-    lines.append("TBD: explain privilege mode, address type, access width/alignment, seed path, execution path, handler path, and final check path. Preserve the original verification target.")
+    lines.append("待填写：按错误簇/错误分类挑代表用例展开。每个错误簇至少写一个代表 case；同类剩余 case 可列在“涉及 case”。不要把 cluster 当最终 root cause，必须结合源码、日志、profile 和必要时波形证据判断。")
     lines.append("")
-    lines.append("## Observed Failure")
+    lines.append("### <错误簇或分类名称>")
+    lines.append("")
+    lines.append("- representative_case: `TBD`")
+    lines.append("- 涉及 case: `TBD`")
+    lines.append("- 初步分类: `selfcheck_bug | spike_or_model_limitation | suspected_rtl_bug | environment_blocked | true_stuck | inconclusive`")
+    lines.append("- 置信度: `high | medium | low`")
+    lines.append("")
+    lines.append("#### 场景")
+    lines.append("")
+    lines.append("待填写：代表用例测什么；包括特权级、地址类型、PMA/PBMT/MMIO/DRAM/cacheability、访问宽度、异常/handler/check 路径。")
+    lines.append("")
+    lines.append("#### 本来预期")
+    lines.append("")
+    lines.append("待填写：按 spec/profile/test intent，本来应该发生什么。")
+    lines.append("")
+    lines.append("#### 错误情况")
+    lines.append("")
+    lines.append("待填写：run.log/assert.log/mismatch/waveform 观察到的实际错误。")
+    lines.append("")
+    lines.append("#### 初步判断")
+    lines.append("")
+    lines.append("待填写：说明当前更像 Spike/model limitation、RTL bug、selfcheck bug、environment blocked 还是 true stuck/inconclusive；若偏 RTL，写具体怀疑模块/路径/信号/响应/数据错误；若偏 Spike/model，写缺失模型或与 LinkNan 平台行为不一致的位置。")
+    lines.append("")
+    lines.append("## 场景与验证意图")
+    lines.append("")
+    lines.append("待填写：说明特权级、地址类型、访问宽度/对齐、seed 路径、执行路径、异常 handler 路径和最终检查路径。必须保留原始验证目标，不能为了通过而弱化 PMA/PBMT/IO/窄宽度等意图。")
+    lines.append("")
+    lines.append("## 失败现象")
     lines.append("")
     visible = selected[:max_cases]
     if len(selected) > max_cases:
-        lines.append(f"TBD: `{len(selected) - max_cases}` additional selected cases are summarized in the table above; expand them if their evidence differs from the representative set.")
+        lines.append(f"待填写：还有 `{len(selected) - max_cases}` 个 case 只在上表汇总；如果证据与代表 case 不同，需要展开补充。")
         lines.append("")
     for item in visible:
         run = latest_run(item)
@@ -115,16 +150,16 @@ def write_report(
         lines.append(f"- latest_status: `{run.get('status', 'no_run')}`")
         lines.append(f"- evidence_tags: `{', '.join(run.get('evidence_tags') or [])}`")
         if run.get("key_lines"):
-            lines.append("- run.log key lines:")
+            lines.append("- run.log 关键行:")
             for key_line in run.get("key_lines", [])[:20]:
                 lines.append(f"  - `{key_line}`")
         else:
-            lines.append("- run.log key lines: `none captured`")
+            lines.append("- run.log 关键行: `none captured`")
         lines.append("")
-    lines.append("## Source Analysis")
+    lines.append("## 源码分析")
     lines.append("")
     if len(selected) > max_cases:
-        lines.append(f"TBD: source details below are limited to `{max_cases}` representative cases; expand if remaining cases are not covered by the same helper/path.")
+        lines.append(f"待填写：下面源码细节只展开 `{max_cases}` 个代表 case；如果剩余 case 不走同一 helper/path，需要继续补充。")
         lines.append("")
     for item in visible:
         source = item.get("source") or {}
@@ -133,38 +168,75 @@ def write_report(
         lines.append(f"- source: `{source_ref(source)}`")
         lines.append(f"- exact_pbmt_hits: `{source.get('exact_pbmt_hits', 0)}`")
         if source.get("keyword_lines"):
-            lines.append("- source keyword lines:")
+            lines.append("- 源码关键行:")
             for line in source.get("keyword_lines", [])[:20]:
                 lines.append(f"  - `{line}`")
         else:
-            lines.append("- source keyword lines: `none captured`")
+            lines.append("- 源码关键行: `none captured`")
         lines.append("")
-    lines.append("## Waveform Evidence")
+    lines.append("## Profile Guard")
     lines.append("")
-    lines.append("TBD if waveform was used: include first useful bad cycle/time, key signals, expected vs actual data/control flow, and why later symptoms are secondary.")
+    lines.append("待填写：PMA/PBMT/MMIO/Device/responder/no-response 或 profile 实现范围相关 case 必填；无关时写 `not-applicable`。")
     lines.append("")
-    lines.append("## Classification")
+    lines.append("- spec_profile: `TBD`")
+    lines.append("- pa/window: `TBD`")
+    lines.append("- pma: `TBD`")
+    lines.append("- pbmt: `TBD`")
+    lines.append("- spec_allowed: `TBD`")
+    lines.append("- responder_required: `TBD`")
+    lines.append("- spike_gate_applicable: `TBD`")
+    lines.append("- rtl_implemented: `TBD`")
+    lines.append("- profile_not_impl_reason: `TBD`")
+    lines.append("- testbench_responder_confirmed: `TBD`")
+    lines.append("- platform/source evidence: `TBD`")
+    lines.append("- wave/log evidence: `TBD`")
+    lines.append("- classification: `TBD`")
     lines.append("")
-    lines.append("TBD: state the selected taxonomy label and why alternatives were rejected. Be explicit about Spike/model limitation vs test selfcheck bug vs suspected RTL bug.")
+    lines.append("## 波形报告")
     lines.append("")
-    lines.append("## Action")
+    if waveform_reports:
+        lines.append("本 triage 使用了 waveform-debug 的信号级报告；主报告只摘要关键结论，完整波形证据以以下 `report.md` 为准：")
+        lines.append("")
+        for report in waveform_reports:
+            lines.append(f"- waveform_report: `{report}`")
+    else:
+        lines.append("未使用波形；如果后续调用 `$waveform-debug`，必须在这里填写 waveform-debug 产出的 `report.md` 路径，并摘要 first-bad-cycle/关键信号结论。")
     lines.append("")
-    lines.append("TBD: patch performed, report-only bug, manual/blocked decision, or required platform support. Do not weaken PMA/PBMT/IO/narrow-width intent.")
+    lines.append("待填写：若有波形，摘要 first bad time/cycle、关键信号、期望 vs 实际数据/控制流，以及为什么后续症状只是结果。")
     lines.append("")
-    lines.append("## Verification")
+    lines.append("## 待人工审核问题")
     lines.append("")
-    lines.append("TBD: commands run, result log paths, PASS/FAIL/GOOD TRAP evidence, and list updates. Do not delete from failure lists without clean trusted evidence.")
+    lines.append("待填写：记录修改用例或重跑过程中发现的疑似 RTL bug、未决环境问题或需要 owner 判断的问题。每项写清 source/log/run-dir/waveform report 路径；没有则写 `none`。不要为了清表而把这些疑点改没。")
+    lines.append("")
+    lines.append("## 分类")
+    lines.append("")
+    lines.append("待填写：写明最终 taxonomy label，并说明为什么排除其它分类。必须明确区分 Spike/model limitation、测试自校验错误、环境限制和 suspected RTL bug。")
+    lines.append("")
+    lines.append("## 处理动作")
+    lines.append("")
+    lines.append("待填写：说明已做 patch、仅写 bug report、manual/blocked 决策，或仍需要平台/RTL 支持。不得弱化 PMA/PBMT/IO/窄宽度验证意图。")
+    lines.append("")
+    lines.append("## 验证")
+    lines.append("")
+    lines.append("待填写：列出执行命令、结果日志路径、PASS/FAIL/GOOD TRAP 证据和失败列表更新。没有可信 clean rerun 证据时，不得从失败列表删除。")
     lines.append("")
     path.write_text("\n".join(lines))
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate an editable triage report template from snapshot JSON."
+        description="Generate an editable Chinese report.md template from snapshot JSON."
     )
     parser.add_argument("--snapshot-json", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--title", default="Hyptest triage report")
+    parser.add_argument("--title", default="Hyptest 失败分析报告")
+    parser.add_argument(
+        "--waveform-report",
+        action="append",
+        type=Path,
+        default=[],
+        help="Path to waveform-debug report.md; repeatable when multiple waveform reports are used",
+    )
     parser.add_argument("--case", action="append", default=[], help="Specific case to include; repeatable")
     parser.add_argument(
         "--max-cases",
@@ -174,7 +246,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--action",
-        choices=["selfcheck_fail", "waveform_report_update", "mismatch", "stuck", "passed"],
+        choices=["selfcheck_fail", "waveform", "waveform_report_update", "mismatch", "stuck", "passed"],
         help="Select cases by broad latest status/action when --case is not used",
     )
     return parser.parse_args()
@@ -186,7 +258,14 @@ def main() -> int:
     selected = select_cases(snapshot, args.case, args.action)
     if not selected:
         raise SystemExit("no cases selected for report")
-    write_report(args.out, args.snapshot_json, selected, args.title, max(args.max_cases, 1))
+    write_report(
+        args.out,
+        args.snapshot_json,
+        selected,
+        args.title,
+        max(args.max_cases, 1),
+        args.waveform_report,
+    )
     print(f"report={args.out}")
     print(f"cases={len(selected)}")
     return 0

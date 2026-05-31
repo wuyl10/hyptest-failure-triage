@@ -1,9 +1,9 @@
 # Current Hyptest / LinkNan Layout
 
 Use this reference when triage depends on source location, generated artifacts,
-platform environment variables, or where to look for logs/lists. It describes
-conventional locations only; single-case or log-only triage does not require
-`selfcheck_fail.txt` or `stuck.txt`.
+platform environment variables, or where to look for logs. List-level triage and
+list cleanup require a user-provided or trusted workflow-provided list path;
+single-case or log-only triage does not require any failure-list file.
 
 ## Hyptest Source Layout
 
@@ -49,26 +49,19 @@ or compile evidence.
 ## LinkNan Run Artifacts
 
 ```text
-$LINKNAN_HOME/regress_logs/
-$LINKNAN_HOME/sim/simv/
-$LINKNAN_HOME/sim/simv/<case-or-run-name>/run.log
-$LINKNAN_HOME/sim/simv/<case-or-run-name>/assert.log
+$HYPTEST_LINKNAN_HOME/regress_logs/
+$HYPTEST_LINKNAN_HOME/sim/simv/
+$HYPTEST_LINKNAN_HOME/sim/simv/<case-or-run-name>/run.log
+$HYPTEST_LINKNAN_HOME/sim/simv/<case-or-run-name>/assert.log
 ```
 
 Run directory names may be truncated or prefixed. Prefer exact `case.name` /
 `run.log` evidence over substring matching.
 
-Conventional list candidates, only for list-mode triage or cleanup:
-
-```text
-$LINKNAN_HOME/regress_logs/selfcheck_fail.txt
-$LINKNAN_HOME/regress_logs/stuck.txt
-```
-
-These files are discovery hints, not mandatory inputs. If a user provides a
-single case, a QEMU/Spike/LinkNan log, or pasted output, triage that evidence
-directly. Require a list path only when the user asks for list-level analysis or
-list cleanup.
+Do not infer failure-list paths from default names under `regress_logs/`. If a
+user provides a single case, a Spike/LinkNan log, or pasted output, triage that
+evidence directly. If the user asks for list-level analysis or list cleanup
+without a list path, ask for the explicit path.
 
 ## Platform Names And Environment
 
@@ -77,17 +70,27 @@ Use current hyptest platform names:
 ```text
 spike
 linknan
-qemu     when the target repo supports QEMU in compile_elf.py/get_result.py
 ```
 
-Required environment variables for reusable commands:
+Environment variables follow the `hyptest-workflow` public contract. Reusable
+commands must emit `HYPTEST_*` names.
 
 ```text
-HYPTEST_REPO or RVH_HYPTEST_REPO  hyptest repo root
-LINKNAN_HOME                      LinkNan repo root when LinkNan artifacts are needed
-DIFFTEST_REF_SO                   difftest reference shared object when LinkNan reruns are needed
-SPIKE_BIN                         official Spike executable when Spike reruns are needed
-HYPTEST_QEMU_BIN                  QEMU executable when QEMU reruns are needed
+HYPTEST_HOME            hyptest repo root
+HYPTEST_LINKNAN_HOME    LinkNan repo root when LinkNan artifacts are needed
+HYPTEST_DIFFTEST_REF_SO difftest reference shared object when LinkNan difftest reruns are needed
+HYPTEST_SPIKE_BIN       official/community Spike executable when Spike reruns are needed
+HYPTEST_CROSS_COMPILE   toolchain prefix only when workflow compile/rerun needs it
+HYPTEST_TMPDIR          temporary directory when needed
+HYPTEST_FAILURE_TRIAGE_SKILL_HOME failure-triage skill directory when manually running bundled scripts
+```
+
+Use dedicated skill-home variables for bundled scripts:
+
+```text
+HYPTEST_FAILURE_TRIAGE_SKILL_HOME  hyptest-failure-triage bundled scripts
+HYPTEST_WORKFLOW_SKILL_HOME        hyptest-workflow bundled scripts
+WAVEFORM_DEBUG                     waveform-debug bundled scripts
 ```
 
 Do not emit `--plat xiangshan` or `--platform xiangshan`; LinkNan is the

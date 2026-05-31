@@ -11,15 +11,21 @@ from typing import Any
 
 from env_paths import default_skill_dir, env_path, require_path
 
-DEFAULT_HYPTEST_REPO = env_path("HYPTEST_REPO", "RVH_HYPTEST_REPO")
-DEFAULT_LINKNAN_REPO = env_path("LINKNAN_HOME")
+DEFAULT_HYPTEST_HOME = env_path("HYPTEST_HOME")
+DEFAULT_LINKNAN_REPO = env_path("HYPTEST_LINKNAN_HOME")
 DEFAULT_SKILL_DIR = default_skill_dir(__file__)
 
 
-def linknan_env_prechecks() -> list[str]:
+def linknan_base_env_prechecks() -> list[str]:
     return [
-        'test -n "${LINKNAN_HOME:-}" || { echo "missing LINKNAN_HOME"; exit 2; }',
-        'test -n "${DIFFTEST_REF_SO:-}" || { echo "missing DIFFTEST_REF_SO"; exit 2; }',
+        'test -n "${HYPTEST_LINKNAN_HOME:-}" || { echo "missing HYPTEST_LINKNAN_HOME"; exit 2; }',
+    ]
+
+
+def linknan_difftest_env_prechecks() -> list[str]:
+    return [
+        *linknan_base_env_prechecks(),
+        'test -n "${HYPTEST_DIFFTEST_REF_SO:-}" || { echo "missing HYPTEST_DIFFTEST_REF_SO"; exit 2; }',
     ]
 
 
@@ -42,13 +48,17 @@ def latest_run(item: dict[str, Any]) -> dict[str, Any]:
     return runs[0] if runs else {}
 
 
+def has_waveform_evidence(run: dict[str, Any]) -> bool:
+    tags = set(run.get("evidence_tags") or [])
+    return bool(tags & {"wave-run", "fsdb", "waveform"})
+
+
 def choose_action(item: dict[str, Any]) -> str:
     run = latest_run(item)
     status = run.get("status", "no_run")
-    tags = set(run.get("evidence_tags") or [])
     if status == "passed_good_trap":
         return "verify_remove"
-    if status == "selfcheck_fail" and "wave-run" in tags:
+    if status == "selfcheck_fail" and has_waveform_evidence(run):
         return "write_wave_report"
     if status == "selfcheck_fail":
         return "source_rerun"
@@ -100,7 +110,8 @@ def build_suggestions(
                 "commands": command_block(
                     [
                         f"cd {hyptest_repo}",
-                        *linknan_env_prechecks(),
+                        "# runner_mode=linknan-difftest unless triage explicitly requests linknan-no-diff for RTL-only observation.",
+                        *linknan_difftest_env_prechecks(),
                         *[
                             command
                             for case in cases
@@ -124,9 +135,9 @@ def build_suggestions(
                     [
                         f"python3 {skill_dir}/scripts/triage_report_template.py \\",
                         f"  --snapshot-json {snapshot_path} \\",
-                        "  --action waveform_report_update \\",
+                        "  --action waveform \\",
                         f"  --max-cases {min(limit, 5)} \\",
-                        f"  --title \"{topic} triage report\" \\",
+                        f"  --title \"{topic} 失败分析报告\" \\",
                         f"  --out {report_dir}/{topic}/report.md",
                     ]
                 ),
@@ -143,7 +154,8 @@ def build_suggestions(
                 "commands": command_block(
                     [
                         f"cd {hyptest_repo}",
-                        *linknan_env_prechecks(),
+                        "# runner_mode=linknan-difftest; mismatch cleanup requires difftest-enabled evidence.",
+                        *linknan_difftest_env_prechecks(),
                         *[
                             command
                             for case in cases
@@ -165,7 +177,9 @@ def build_suggestions(
                 "commands": command_block(
                     [
                         f"cd {hyptest_repo}",
-                        *linknan_env_prechecks(),
+                        "# runner_mode=linknan-no-diff for RTL-only no-response/waveform observation; use linknan-difftest for cleanup.",
+                        "# Do not hardcode a no-diff CLI flag here; hand this runner_mode to hyptest-workflow so it uses the current LinkNan support.",
+                        *linknan_base_env_prechecks(),
                         *[
                             command
                             for case in cases
@@ -285,14 +299,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--hyptest-repo",
         type=Path,
-        default=DEFAULT_HYPTEST_REPO,
-        help="riscv-hyp-tests repo path; defaults to HYPTEST_REPO or RVH_HYPTEST_REPO",
+        default=DEFAULT_HYPTEST_HOME,
+        help="riscv-hyp-tests repo path; defaults to HYPTEST_HOME",
     )
     parser.add_argument(
         "--linknan-repo",
         type=Path,
         default=DEFAULT_LINKNAN_REPO,
-        help="LinkNan repo path; defaults to LINKNAN_HOME",
+        help="LinkNan repo path; defaults to HYPTEST_LINKNAN_HOME",
     )
     parser.add_argument("--skill-dir", type=Path, default=DEFAULT_SKILL_DIR)
     parser.add_argument("--limit", type=int, default=5, help="Max cases per action group")
@@ -304,13 +318,13 @@ def parse_args() -> argparse.Namespace:
     args.hyptest_repo = require_path(
         args.hyptest_repo,
         "--hyptest-repo",
-        ("HYPTEST_REPO", "RVH_HYPTEST_REPO"),
+        "HYPTEST_HOME",
         "hyptest repo",
     )
     args.linknan_repo = require_path(
         args.linknan_repo,
         "--linknan-repo",
-        ("LINKNAN_HOME",),
+        "HYPTEST_LINKNAN_HOME",
         "LinkNan repo",
     )
     args.skill_dir = args.skill_dir.expanduser().resolve()

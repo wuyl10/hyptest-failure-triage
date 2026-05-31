@@ -50,8 +50,25 @@ def collect_readme_issues(readme_text: str) -> list[str]:
         "scripts/selftest.py",
         "scripts/eval_log_patterns.py",
         "scripts/eval_official_spike_patterns.py",
+        "HYPTEST_FAILURE_TRIAGE_SKILL_HOME",
     ]
     return [marker for marker in required_markers if marker not in readme_text]
+
+
+def collect_forbidden_text_issues() -> list[str]:
+    issues: list[str] = []
+    forbidden = [
+        "HYPTEST_" + "SKILL_HOME",
+        "<" + "skill-dir" + ">",
+    ]
+    docs = [SKILL_DIR / "SKILL.md", README]
+    docs.extend(sorted((SKILL_DIR / "references").glob("*.md")))
+    for path in docs:
+        text = path.read_text(errors="ignore")
+        for needle in forbidden:
+            if needle in text:
+                issues.append(f"{rel(path)} contains forbidden {needle}")
+    return issues
 
 
 def main() -> int:
@@ -71,8 +88,9 @@ def main() -> int:
 
     missing = collect_missing(resource_text, include_fixtures=not args.no_fixtures)
     readme_issues = collect_readme_issues(readme_text)
+    forbidden_issues = collect_forbidden_text_issues()
 
-    if missing or readme_issues:
+    if missing or readme_issues or forbidden_issues:
         if missing:
             print("resource_index.md missing entries:", file=sys.stderr)
             for item in missing:
@@ -80,6 +98,10 @@ def main() -> int:
         if readme_issues:
             print("README.md missing expected markers:", file=sys.stderr)
             for item in readme_issues:
+                print(f"  - {item}", file=sys.stderr)
+        if forbidden_issues:
+            print("docs contain forbidden text:", file=sys.stderr)
+            for item in forbidden_issues:
                 print(f"  - {item}", file=sys.stderr)
         return 1
 

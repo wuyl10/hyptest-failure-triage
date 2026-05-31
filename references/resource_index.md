@@ -15,12 +15,12 @@
 
 | 脚本 | 用途 |
 | --- | --- |
-| `scripts/triage_snapshot.py` | 对 `selfcheck_fail.txt` / `stuck.txt` 等失败列表做第一轮快照，索引源码、关键词、最新 run 目录和 run.log 特征 |
+| `scripts/triage_snapshot.py` | 对用户明确提供的失败列表做第一轮快照，索引源码、关键词、最新 run 目录和 run.log 特征 |
 | `scripts/cluster_failures.py` | 对 snapshot JSON 做保守聚类，支持 `coarse` / `theme` / `strict` |
 | `scripts/triage_plan.py` | 从 snapshot JSON 生成 action-oriented plan，划分删除候选、source/rerun、waveform/report、mismatch、stuck、inconclusive 等工作队列 |
 | `scripts/command_suggester.py` | 从 snapshot 生成保守的下一步命令建议，不自动执行 |
-| `scripts/triage_report_template.py` | 从 snapshot 生成可编辑 `report.md` 骨架，预填 case、run/source 证据和必要章节 |
-| `scripts/update_failure_list.py` | 只删除最新 clean `passed_good_trap` 的失败列表项；支持 `--dry-run`、`--list-kind` 和 `.bak` |
+| `scripts/triage_report_template.py` | 从 snapshot 生成中文 `report.md` 骨架并强制输出文件名，预填 case、run/source 证据、代表用例分类、Profile Guard、波形报告引用和待人工审核章节 |
+| `scripts/update_failure_list.py` | 只删除最新 clean `passed_good_trap` 的失败列表项；支持 `--dry-run`、`--list-kind` 和 `.bak`；mismatch 的 difftest-disabled override 需要显式 reason |
 | `scripts/compare_snapshots.py` | 对比两份 snapshot，找新增、已解决、状态变化、evidence tag 变化和 latest-run 变化 |
 | `scripts/known_pattern_classifier.py` | 已知模式分类辅助，被 snapshot/评估脚本复用 |
 | `scripts/env_paths.py` | 环境变量和路径解析辅助 |
@@ -66,22 +66,22 @@
 修改 skill 文档后至少运行：
 
 ```bash
-python3 scripts/selftest.py
-python3 scripts/check_readme_commands.py
-python3 scripts/check_resource_index.py
-python3 scripts/check_fixture_manifests.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/selftest.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_readme_commands.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_resource_index.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_fixture_manifests.py
 ```
 
 修改 run.log 模式识别时运行：
 
 ```bash
-python3 scripts/eval_log_patterns.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/eval_log_patterns.py
 ```
 
 修改 official Spike 模式识别时运行：
 
 ```bash
-python3 scripts/eval_official_spike_patterns.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/eval_official_spike_patterns.py
 ```
 
 新增脚本或 fixture 后，更新本索引并确认 `README.md` 和 `SKILL.md` 中的命令仍然准确。

@@ -8,7 +8,7 @@
 - 区分 Spike / golden model limitation、LinkNan 环境限制、测试自校验错误和真实 RTL 可疑 bug。
 - 判断 stuck 是否有内部 no-commit / watchdog / waveform no-forward-progress 证据，而不是只看 wall-clock timeout。
 - 为 suspected RTL bug 写出可审查的 `report.md`。
-- 在验证通过后安全更新用户明确指定的 `selfcheck_fail.txt`、`stuck.txt` 或 mismatch 列表。
+- 在验证通过后安全更新用户明确指定的 selfcheck/stuck/mismatch 失败列表。
 
 ## 入口文件
 
@@ -25,7 +25,7 @@
 看到这些输入或症状时应使用本 skill：
 
 - 单个 case `FAILED` / selfcheck error / timeout / stuck
-- `selfcheck_fail.txt` / `stuck.txt` / mismatch list 等失败列表
+- 用户明确给出的 selfcheck / stuck / mismatch 失败列表
 - `run.log` / `assert.log`
 - `get_result.py` batch result log 或用户粘贴的终端输出
 - Spike / LinkNan difftest mismatch
@@ -39,6 +39,16 @@
 
 如果任务变成新增/修改 hyptest case、调整 `test_register.c`、编译批跑、回填 `test_point` 或分层落位，同时使用 `hyptest-workflow`。如果任务需要波形 first-bad-cycle、握手、协议或 X-state 分析，同时使用 `waveform-debug`。
 
+跨 skill 路由速记：
+
+| 需求 | 调用 | 回到本 skill 做什么 |
+| --- | --- | --- |
+| 改 case、改注册、编译/重跑、分层、reason_code、test_point 回填 | `hyptest-workflow` | 用运行/分层证据做最终归因和列表清理判断 |
+| `spec_profile`、PMA/PBMT/MMIO/Device guard、responder_required、RTL/Nanhu implementation scope | `hyptest-workflow` | 区分 spec_allowed、环境 blocked、profile 未实现、suspected RTL |
+| FSDB/VCD/FST、first-bad-cycle、valid/ready/协议/X-state、no-response/stuck 信号路径 | `waveform-debug` | 在本 skill 的中文 `report.md` 中引用 waveform-debug 的 `report.md`，并摘要信号证据 |
+| mismatch cleanup | `hyptest-workflow` 跑 `linknan-difftest` | 不靠 waveform 清理；本 skill 检查 clean rerun 后 dry-run/final update |
+| RTL-only stuck/no-response/waveform | `hyptest-workflow` 做 profile guard + `linknan-no-diff`/FSDB，必要时 `waveform-debug` | 收口为 true_stuck / environment_blocked / suspected_rtl_bug / inconclusive |
+
 ## 失败模型
 
 这个 skill 用“三大入口，六类归因”的模型。
@@ -47,7 +57,7 @@
 
 - `selfcheck fail`：断言失败、`FAILED`、`HIT GOOD TRAP` 但 selfcheck 失败。
 - `stuck/no-forward-progress`：`50000 cycles no commit`、watchdog/no-forward-progress，或需要判断的 timeout。
-- `difftest mismatch`：DUT 和 Spike/QEMU/golden/reference model 不一致。
+- `difftest mismatch`：DUT 和 Spike/golden/reference model 不一致。
 
 六类归因才是最终结论：
 
@@ -55,23 +65,34 @@
 | --- | --- |
 | `selfcheck_bug` | case/assert/setup 错，修测试但不能削弱原验证目标 |
 | `spike_or_model_limitation` | golden/model 缺少所需架构、微结构或平台行为 |
-| `environment_blocked` | 当前平台/testbench 缺 responder、设备、配置或运行能力 |
+| `environment_blocked` | 当前平台/testbench 缺 responder、设备、配置或运行能力，或 active profile 标记目标 RTL/Nanhu 能力未实现 |
 | `suspected_rtl_bug` | case 目标合理，日志/波形证据指向 RTL 行为错误 |
 | `true_stuck` | 有内部 no-commit/watchdog 或波形/log 无前进证据 |
 | `inconclusive` | 证据不足，例如只有 wall-clock timeout |
 
-不要把入口表象直接当最终结论：`selfcheck_fail.txt` 里的 case 不一定是 `selfcheck_bug`，`stuck.txt` 里的 case 不一定是 `true_stuck`，difftest mismatch 也不一定是 RTL bug。
+不要把入口表象直接当最终结论：selfcheck 失败列表里的 case 不一定是 `selfcheck_bug`，stuck 失败列表里的 case 不一定是 `true_stuck`，difftest mismatch 也不一定是 RTL bug。
 
 ## 环境变量
 
-优先使用环境变量，不依赖个人绝对路径：
+环境变量口径与 `hyptest-workflow` 对齐：对外统一使用 `HYPTEST_*`
+变量，不依赖个人绝对路径。
 
 ```text
-HYPTEST_REPO or RVH_HYPTEST_REPO  hyptest repo root
-LINKNAN_HOME                      LinkNan repo root when LinkNan artifacts are needed
-DIFFTEST_REF_SO                   difftest reference shared object when LinkNan reruns are needed
-SPIKE_BIN                         official Spike executable when Spike reruns are needed
-HYPTEST_QEMU_BIN                  QEMU executable when QEMU reruns are needed
+HYPTEST_HOME            hyptest repo root
+HYPTEST_LINKNAN_HOME    LinkNan repo root when LinkNan artifacts are needed
+HYPTEST_DIFFTEST_REF_SO difftest reference shared object when LinkNan difftest reruns are needed
+HYPTEST_SPIKE_BIN       official/community Spike executable when Spike reruns are needed
+HYPTEST_CROSS_COMPILE   toolchain prefix only when workflow compile/rerun needs it
+HYPTEST_TMPDIR          temporary directory when needed
+HYPTEST_FAILURE_TRIAGE_SKILL_HOME failure-triage skill directory when manually running bundled scripts
+```
+
+跨 skill 调用时使用互不混用的 skill-home 变量：
+
+```text
+HYPTEST_FAILURE_TRIAGE_SKILL_HOME  hyptest-failure-triage bundled scripts
+HYPTEST_WORKFLOW_SKILL_HOME        hyptest-workflow bundled scripts
+WAVEFORM_DEBUG                     waveform-debug bundled scripts
 ```
 
 ## 输入模式
@@ -86,35 +107,51 @@ HYPTEST_QEMU_BIN                  QEMU executable when QEMU reruns are needed
 | Cleanup | 要删除/更新的 list 路径 + 可信重跑证据 | 是 |
 | Workflow handoff | workflow 交接卡片里的 case/log/spec_profile | 否 |
 
-传统列表候选路径只作为 discovery hint，不是单 case/log triage 的必需输入：
+列表分析和列表清理只使用用户或可信 workflow handoff 明确给出的 list 路径。不要根据
+`regress_logs/` 下的默认文件名自行推断或探测失败列表；如果任务需要 list 但没有给路径，先询问路径。
 
 ```text
-selfcheck list   $LINKNAN_HOME/regress_logs/selfcheck_fail.txt
-stuck list       $LINKNAN_HOME/regress_logs/stuck.txt
-triage reports   $LINKNAN_HOME/regress_logs/
-sim run dirs     $LINKNAN_HOME/sim/simv/
+triage reports   preferably next to the provided logs/lists, or under the chosen regress_logs/
+sim run dirs     $HYPTEST_LINKNAN_HOME/sim/simv/ when LinkNan artifacts are used
 ```
 
-如果用户没有给 list 文件路径，也没有要求清理列表，就不要强行寻找 `selfcheck_fail.txt` 或 `stuck.txt`；按单 case 或 log 模式继续。
+如果用户没有给 list 文件路径，也没有要求清理列表，就按单 case 或 log 模式继续。
 
 ## 标准流程
 
 常用命令可以直接列出：
 
 ```bash
-python3 scripts/list_skill_commands.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/list_skill_commands.py
 ```
 
 也可以生成 Markdown 或 JSON：
 
 ```bash
-python3 scripts/list_skill_commands.py --markdown
-python3 scripts/list_skill_commands.py --json
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/list_skill_commands.py --markdown
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/list_skill_commands.py --json
 ```
 
 snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case 源码位置、关键词、最新 run 目录、run.log 特征和初步 bucket。单 case 或 log-only 任务不要求先生成 snapshot；直接看用户提供的日志/源码即可。聚类和计划是工作队列优化，不是最终 root cause。生成的命令不会自动执行，先人工检查，再决定是否运行。删除失败列表前必须先 dry-run；对 mismatch 列表必须使用 `--list-kind mismatch`，除非用户明确接受，否则不要用 difftest-disabled GOOD TRAP 清理 difftest mismatch。
 
-下面这段命令由 `python3 scripts/update_readme_commands.py` 从 `scripts/list_skill_commands.py --markdown` 生成。
+危险例外：如果用户明确接受用 difftest-disabled / RTL-only 证据清理
+mismatch list，`update_failure_list.py` 需要同时传
+`--allow-difftest-disabled` 和 `--difftest-disabled-override-reason <reason>`；
+报告里也要记录这个原因。
+
+运行平台只区分 Spike 和 LinkNan：
+
+| runner_mode | 编译 | 运行 | 用途 |
+| --- | --- | --- | --- |
+| `spike-gate` | `compile_elf.py --plat spike` | `get_result.py --platform spike` | 普通架构/default gate，且 profile 允许 Spike gate |
+| `linknan-difftest` | `compile_elf.py --plat linknan` | `get_result.py --platform linknan` | 复现/清理 difftest mismatch，或证明 DUT/reference 对齐 |
+| `linknan-no-diff` | `compile_elf.py --plat linknan` | `get_result.py --platform linknan` + 当前 runner 支持的 no-diff 设置 | RTL-only selfcheck、FSDB/waveform、no-response/stuck、PMA/PBMT/MMIO responder、CBO/refill/cache/TLB/sbuffer/replay 等观察 |
+
+`linknan-no-diff` 只能支持 selfcheck、RTL-only 或波形结论，不能清理
+difftest mismatch，也不能把 profile 标记未实现的目标假装成 PASS。
+
+下面这段命令由 `python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_readme_commands.py`
+从 `scripts/list_skill_commands.py --markdown` 生成。
 
 <!-- BEGIN GENERATED COMMANDS -->
 ### snapshot
@@ -122,19 +159,7 @@ snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case
 - `list-snapshot`: Create a conservative first-pass snapshot from an explicit failure-list file.
 
   ```bash
-  python3 scripts/triage_snapshot.py --list <failure-list> --hyptest-repo "$HYPTEST_REPO" --linknan-repo "$LINKNAN_HOME" --md-out <topic>_snapshot.md --json-out <topic>_snapshot.json
-  ```
-
-- `conventional-selfcheck-snapshot`: Create a snapshot from the conventional LinkNan selfcheck list when that file is the intended input.
-
-  ```bash
-  python3 scripts/triage_snapshot.py --list "$LINKNAN_HOME/regress_logs/selfcheck_fail.txt" --hyptest-repo "$HYPTEST_REPO" --linknan-repo "$LINKNAN_HOME" --md-out "$LINKNAN_HOME/regress_logs/selfcheck_snapshot.md" --json-out "$LINKNAN_HOME/regress_logs/selfcheck_snapshot.json"
-  ```
-
-- `conventional-stuck-snapshot`: Create a snapshot from the conventional LinkNan stuck list when that file is the intended input.
-
-  ```bash
-  python3 scripts/triage_snapshot.py --list "$LINKNAN_HOME/regress_logs/stuck.txt" --hyptest-repo "$HYPTEST_REPO" --linknan-repo "$LINKNAN_HOME" --md-out "$LINKNAN_HOME/regress_logs/stuck_snapshot.md" --json-out "$LINKNAN_HOME/regress_logs/stuck_snapshot.json"
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_snapshot.py --list <failure-list> --hyptest-repo "$HYPTEST_HOME" --linknan-repo "$HYPTEST_LINKNAN_HOME" --md-out <topic>_snapshot.md --json-out <topic>_snapshot.json
   ```
 
 ### planning
@@ -142,33 +167,39 @@ snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case
 - `cluster`: Cluster snapshot cases by conservative observable features.
 
   ```bash
-  python3 scripts/cluster_failures.py --snapshot-json <topic>_snapshot.json --mode coarse --md-out <topic>_clusters.md --json-out <topic>_clusters.json
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/cluster_failures.py --snapshot-json <topic>_snapshot.json --mode coarse --md-out <topic>_clusters.md --json-out <topic>_clusters.json
   ```
 
 - `plan`: Create an action-oriented triage plan from a snapshot.
 
   ```bash
-  python3 scripts/triage_plan.py --snapshot-json <topic>_snapshot.json --md-out <topic>_plan.md --json-out <topic>_plan.json
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_plan.py --snapshot-json <topic>_snapshot.json --md-out <topic>_plan.md --json-out <topic>_plan.json
   ```
 
 - `suggest-commands`: Generate conservative next-step commands without executing them.
 
   ```bash
-  python3 scripts/command_suggester.py --snapshot-json <topic>_snapshot.json --limit 5 --jobs 20 --timeout 900 --md-out <topic>_commands.md --json-out <topic>_commands.json
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/command_suggester.py --snapshot-json <topic>_snapshot.json --limit 5 --jobs 20 --timeout 900 --md-out <topic>_commands.md --json-out <topic>_commands.json
   ```
 
 ### report
 
-- `case-report`: Generate an editable report.md skeleton for a representative case.
+- `case-report`: Generate an editable Chinese report.md skeleton for a representative case.
 
   ```bash
-  python3 scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json --case <case_name> --title '<topic> triage report' --out <report-dir>/<topic>/report.md
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json --case <case_name> --title '<topic> 失败分析报告' --out <report-dir>/<topic>/report.md
   ```
 
-- `action-report`: Generate a class-level report skeleton for a broad action group.
+- `action-report`: Generate a class-level Chinese report.md skeleton for a broad action group.
 
   ```bash
-  python3 scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json --action selfcheck_fail --max-cases 5 --title '<topic> triage report' --out <report-dir>/<topic>/report.md
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json --action selfcheck_fail --max-cases 5 --title '<topic> 失败分析报告' --out <report-dir>/<topic>/report.md
+  ```
+
+- `waveform-report-link`: Generate a Chinese report.md that cites waveform-debug's report.md.
+
+  ```bash
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/triage_report_template.py --snapshot-json <topic>_snapshot.json --action waveform --title '<topic> 失败分析报告' --waveform-report <waveform-report-dir>/report.md --out <report-dir>/<topic>/report.md
   ```
 
 ### list-update
@@ -176,19 +207,13 @@ snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case
 - `list-update-dry-run`: Preview safe removals from an explicit failure list.
 
   ```bash
-  python3 scripts/update_failure_list.py --list <failure-list> --snapshot-json <topic>_snapshot.json --list-kind selfcheck --dry-run --verbose-skips
-  ```
-
-- `conventional-selfcheck-dry-run`: Preview safe removals from the conventional LinkNan selfcheck list when that file is the intended target.
-
-  ```bash
-  python3 scripts/update_failure_list.py --list "$LINKNAN_HOME/regress_logs/selfcheck_fail.txt" --snapshot-json <topic>_snapshot.json --list-kind selfcheck --dry-run --verbose-skips
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_failure_list.py --list <failure-list> --snapshot-json <topic>_snapshot.json --list-kind selfcheck --dry-run --verbose-skips
   ```
 
 - `mismatch-dry-run`: Preview safe removals from a difftest mismatch list; difftest-enabled evidence is required.
 
   ```bash
-  python3 scripts/update_failure_list.py --list <mismatch-list> --snapshot-json <topic>_snapshot.json --list-kind mismatch --dry-run --verbose-skips
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_failure_list.py --list <mismatch-list> --snapshot-json <topic>_snapshot.json --list-kind mismatch --dry-run --verbose-skips
   ```
 
 ### compare
@@ -196,7 +221,7 @@ snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case
 - `compare-snapshots`: Compare two snapshots after reruns or LinkNan/dependency updates.
 
   ```bash
-  python3 scripts/compare_snapshots.py --old <old>_snapshot.json --new <new>_snapshot.json --md-out <topic>_compare.md --json-out <topic>_compare.json
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/compare_snapshots.py --old <old>_snapshot.json --new <new>_snapshot.json --md-out <topic>_compare.md --json-out <topic>_compare.json
   ```
 
 ### validation
@@ -204,19 +229,19 @@ snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case
 - `selftest`: Run the bundled synthetic self-test suite.
 
   ```bash
-  python3 scripts/selftest.py
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/selftest.py
   ```
 
 - `log-pattern-eval`: Check realistic run.log / Spike snippet classifications.
 
   ```bash
-  python3 scripts/eval_log_patterns.py
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/eval_log_patterns.py
   ```
 
 - `official-spike-eval`: Check official Spike known model-gap classifications.
 
   ```bash
-  python3 scripts/eval_official_spike_patterns.py
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/eval_official_spike_patterns.py
   ```
 
 ### maintenance
@@ -224,25 +249,25 @@ snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case
 - `readme-check`: Check README generated commands match list_skill_commands.py.
 
   ```bash
-  python3 scripts/check_readme_commands.py
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_readme_commands.py
   ```
 
 - `readme-update`: Refresh README generated command block from list_skill_commands.py.
 
   ```bash
-  python3 scripts/update_readme_commands.py
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_readme_commands.py
   ```
 
 - `resource-index-check`: Check resource_index.md covers references, scripts, fixtures, and README anchors.
 
   ```bash
-  python3 scripts/check_resource_index.py
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_resource_index.py
   ```
 
 - `fixture-manifest-check`: Check fixture manifests match the log files on disk.
 
   ```bash
-  python3 scripts/check_fixture_manifests.py
+  python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_fixture_manifests.py
   ```
 <!-- END GENERATED COMMANDS -->
 
@@ -253,7 +278,7 @@ snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case
 | `selfcheck_bug` | 用例断言、地址别名、seed/check 路径或期望错误 | 修 case，编译和重跑，PASS 后删表 |
 | `spike_or_model_limitation` | Spike/golden model 缺少 cache/TLB/PMA/PBMT/MMIO/CBO 等模型 | 标记 RTL-only/manual/blocked，不误判 RTL bug |
 | `suspected_rtl_bug` | 测试意图合理，源码和日志/波形指向 RTL 错误 | 写 `report.md`，给出证据和 owner 区域 |
-| `environment_blocked` | 当前 testbench 缺少需要的 responder 或环境能力 | 保留 blocked/manual，不改成 DRAM/dcache 逃避 |
+| `environment_blocked` | 当前 testbench 缺少需要的 responder/环境能力，或 active profile 明确标记目标 RTL/Nanhu 能力未实现 | 保留 blocked/manual，不改成 DRAM/dcache 或相邻已实现场景逃避 |
 | `true_stuck` | 有内部 no-commit/watchdog 或波形无前进证据 | 写 stuck report，保留列表 |
 | `inconclusive` | 证据不足，例如 wall-clock timeout only | 不删表，不硬判 stuck 或 RTL bug |
 
@@ -262,7 +287,9 @@ snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case
 - 不要从 wall-clock timeout alone 判断 stuck。
 - 不要用 difftest-disabled PASS 清理 difftest mismatch。
 - 不要为了通过而削弱测试意图，例如把 PMA/PBMT/IO 改成 DRAM/dcache。
+- 不要在修 selfcheck/改用例途中把疑似 RTL 行为顺手改没；先写入中文 `report.md` 的“待人工审核问题”，必要时用 waveform-debug 的 `report.md` 确认 first-bad-cycle。
 - 不要把 byte/half/word 覆盖降成只有 8B 访问。
+- 不要把 active `hyptest-workflow` profile 明确标记为 RTL/Nanhu 未实现的目标假装成 PASS；这类 case 保留 blocked/manual implementation-gap 证据，不能当作已修复从列表清掉，除非用户明确把 case retarget 到已实现场景并重新验证。
 - 不要默认修改 RTL；suspected RTL bug 默认写证据和 owner check points。
 - 不要删除失败列表项，除非最新可信 rerun 是 clean GOOD TRAP/PASS 且无 FAILED/ERROR/mismatch/watchdog。
 - 保留 dirty worktree 中与当前任务无关的修改，不回滚用户改动。
@@ -272,17 +299,17 @@ snapshot 是 list-mode triage 输入，不是最终证明。它帮助汇总 case
 修改本 skill 后运行：
 
 ```bash
-python3 scripts/selftest.py
-python3 scripts/check_readme_commands.py
-python3 scripts/check_resource_index.py
-python3 scripts/check_fixture_manifests.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/selftest.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_readme_commands.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_resource_index.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/check_fixture_manifests.py
 ```
 
 更聚焦的模式检查：
 
 ```bash
-python3 scripts/eval_log_patterns.py
-python3 scripts/eval_official_spike_patterns.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/eval_log_patterns.py
+python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/eval_official_spike_patterns.py
 ```
 
 ## 最终答复要求

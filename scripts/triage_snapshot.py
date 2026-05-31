@@ -17,8 +17,8 @@ from typing import Iterable
 
 from env_paths import env_path, require_path
 
-DEFAULT_HYPTEST_REPO = env_path("HYPTEST_REPO", "RVH_HYPTEST_REPO")
-DEFAULT_LINKNAN_REPO = env_path("LINKNAN_HOME")
+DEFAULT_HYPTEST_HOME = env_path("HYPTEST_HOME")
+DEFAULT_LINKNAN_REPO = env_path("HYPTEST_LINKNAN_HOME")
 
 SOURCE_KEYWORD_RE = re.compile(
     r"PBMT|Pbmt|\bpbmt\b|VSRWXPbmt|PTE_Pbmt|pbmt_hspt_to_x|"
@@ -607,14 +607,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--hyptest-repo",
         type=Path,
-        default=DEFAULT_HYPTEST_REPO,
-        help="riscv-hyp-tests-nhv5.1 repo path; defaults to HYPTEST_REPO or RVH_HYPTEST_REPO",
+        default=DEFAULT_HYPTEST_HOME,
+        help="riscv-hyp-tests-nhv5.1 repo path; defaults to HYPTEST_HOME",
     )
     parser.add_argument(
         "--linknan-repo",
         type=Path,
         default=DEFAULT_LINKNAN_REPO,
-        help="LinkNan repo path; defaults to LINKNAN_HOME",
+        help="LinkNan repo path; defaults to HYPTEST_LINKNAN_HOME",
     )
     parser.add_argument(
         "--simv-dir",
@@ -634,14 +634,14 @@ def parse_args() -> argparse.Namespace:
     args.hyptest_repo = require_path(
         args.hyptest_repo,
         "--hyptest-repo",
-        ("HYPTEST_REPO", "RVH_HYPTEST_REPO"),
+        "HYPTEST_HOME",
         "hyptest repo",
     )
     if args.simv_dir is None:
         args.linknan_repo = require_path(
             args.linknan_repo,
             "--linknan-repo",
-            ("LINKNAN_HOME",),
+            "HYPTEST_LINKNAN_HOME",
             "LinkNan repo",
         )
         args.simv_dir = args.linknan_repo / "sim" / "simv"
