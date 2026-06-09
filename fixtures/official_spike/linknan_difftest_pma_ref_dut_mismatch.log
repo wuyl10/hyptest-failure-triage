@@ -1,0 +1,11 @@
+risc-v NH-V5 tests
+ai_arch_pma_mem_io_cross_boundary_scalar_fault_no_partial_corner
+HYPTEST_DIFFTEST_REF_SO=/nfs/project/difftest/riscv64-spike-so
+LinkNan difftest enabled
+the reference model is /nfs/project/difftest/riscv64-spike-so
+PMA/PBMT/MMIO cross-boundary scalar store hits REF-DUT mismatch
+REF mcause=0x7 mepc=0x80000e7c mtval=0x0000030000000ff8
+DUT mcause=0x0 mepc=0x0 mtval=0x0
+REF trapped on PMA access-fault while DUT continued to later load data
+Analyze first divergence, PMA CSR decode, PA window, and responder behavior.
+DIFFTEST FAILED at cycle 31294

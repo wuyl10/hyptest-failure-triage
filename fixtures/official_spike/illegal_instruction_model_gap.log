@@ -1,4 +1,5 @@
 risc-v NH-V5 tests
+HYPTEST_SPIKE_BIN=/opt/riscv/bin/spike
 custom_cmop_instruction_tests_1
 official Spike illegal instruction on project-specific instruction path
 excpt.cause = 0x2

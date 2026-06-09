@@ -32,12 +32,17 @@ EXACT_PBMT_RE = re.compile(
 LOG_KEY_RE = re.compile(
     r"FAILED|ERROR|MISMATCH|mismatch|HIT GOOD TRAP|BAD TRAP|"
     r"50000|no commit|No commit|watchdog|Watchdog|assert|ASSERT|timeout|TIMEOUT|Fatal|FATAL|"
-    r"disable diff-test|disable difftest|diff-test ref|reference model|Dumping FSDB|FSDB Waveform"
+    r"disable diff-test|disable difftest|diff-test ref|DIFFTEST FAILED|REF[-_\s]?DUT|"
+    r"reference model|Dumping FSDB|FSDB Waveform"
 )
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-DIFFTEST_DISABLED_RE = re.compile(r"\bdisable[sd]?\s+diff-?test\b|\bdiff-?test\s+disabled\b", re.I)
+DIFFTEST_DISABLED_RE = re.compile(
+    r"\bdisable[sd]?\s+diff-?test\b|\bdiff-?test\s+disabled\b|\bno[-_\s]?diff\b",
+    re.I,
+)
 DIFFTEST_ENABLED_RE = re.compile(
-    r"diff-?test\s+ref\s+so|the reference model is|riscv64-spike-so|difftest.*spike",
+    r"diff-?test\s+ref\s+so|the reference model is|riscv64-spike-so|difftest.*spike|"
+    r"\bdifftest\s+enabled\b|\bdifftest\s+failed\b|\bref[-_\s]?dut\b",
     re.I,
 )
 FSDB_ENABLED_RE = re.compile(r"Dumping FSDB Waveform|FSDB Dumper|Create FSDB file|tb_top.*\.fsdb", re.I)
@@ -47,6 +52,7 @@ INTERNAL_STUCK_RE = re.compile(
 )
 MISMATCH_RE = re.compile(r"\b(?:MISMATCH|mismatch)\b")
 NEGATED_MISMATCH_RE = re.compile(r"\b(?:no|without)\s+mismatch(?:es)?\b", re.I)
+DIFFTEST_FAILED_RE = re.compile(r"\bdifftest\s+failed\b", re.I)
 FAILED_RE = re.compile(r"\bFAILED\b")
 NEGATED_FAILED_RE = re.compile(r"\b(?:no|without|zero)\s+failed\b|\bfailed\s*[:=]\s*0\b|\b0\s+failed\b", re.I)
 BAD_TRAP_RE = re.compile(r"\bBAD\s+TRAP\b", re.I)
@@ -90,6 +96,43 @@ def has_real_mismatch_line(line: str) -> bool:
     if not MISMATCH_RE.search(line):
         return False
     return NEGATED_MISMATCH_RE.search(line) is None
+
+
+def has_difftest_failed_line(line: str) -> bool:
+    return DIFFTEST_FAILED_RE.search(line) is not None
+
+
+def has_ref_dut_delta_line(line: str) -> bool:
+    lowered = line.lower()
+    patterns = [
+        r"\bref[-_\s]?dut\b",
+        r"\bright\s*=\s*0x[0-9a-f]+\s*,?\s*wrong\s*=\s*0x[0-9a-f]+",
+        r"\bdifferent\s+at\s+pc\b",
+        r"\bdut\s+continued\b",
+        r"\bref\s+trapped\b",
+    ]
+    if any(re.search(pattern, line, re.I) for pattern in patterns):
+        return True
+    if "ref" not in lowered and "dut" not in lowered:
+        return False
+    return (
+        "ref" in lowered
+        and "dut" in lowered
+        and any(token in lowered for token in ["mismatch", "delta", "different", "trapped", "continued"])
+    )
+
+
+def has_ref_dut_delta_text(text: str) -> bool:
+    lowered = text.lower()
+    paired_markers = [
+        ("the first commit instr pc of dut", "the first commit instr pc of ref"),
+        ("ref mcause", "dut mcause"),
+        ("ref regs", "dut"),
+        ("ref trapped", "dut continued"),
+    ]
+    if any(left in lowered and right in lowered for left, right in paired_markers):
+        return True
+    return any(has_ref_dut_delta_line(line) for line in text.splitlines())
 
 
 def has_real_failed_line(line: str) -> bool:
@@ -243,13 +286,18 @@ def classify_log(text: str) -> str:
     has_good = "hit good trap" in lower
     has_bad = any(has_real_bad_trap_line(line) for line in clean_lines)
     has_failed = any(has_real_failed_line(line) for line in clean_lines)
-    has_mismatch = any(has_real_mismatch_line(line) for line in clean_lines)
+    clean_text = "\n".join(clean_lines)
+    has_mismatch = (
+        any(has_real_mismatch_line(line) for line in clean_lines)
+        or any(has_difftest_failed_line(line) for line in clean_lines)
+        or has_ref_dut_delta_text(clean_text)
+    )
     has_error = any(
         (re.search(r"\b(ERROR|FATAL|Fatal)\b", line) is not None)
         and not is_ignorable_error_at(clean_lines, index)
         for index, line in enumerate(clean_lines)
     )
-    has_stuck = INTERNAL_STUCK_RE.search("\n".join(clean_lines)) is not None
+    has_stuck = INTERNAL_STUCK_RE.search(clean_text) is not None
     has_timeout = "timeout" in lower or "timed out" in lower
 
     if has_stuck:
@@ -280,7 +328,11 @@ def extract_run_metadata(run_dir: Path, text: str) -> dict[str, object]:
     clean_lines = clean.splitlines()
     has_bad_trap = any(has_real_bad_trap_line(line) for line in clean_lines)
     has_failed_assert = any(has_real_failed_line(line) for line in clean_lines)
-    has_mismatch = any(has_real_mismatch_line(line) for line in clean_lines)
+    has_mismatch = (
+        any(has_real_mismatch_line(line) for line in clean_lines)
+        or any(has_difftest_failed_line(line) for line in clean_lines)
+        or has_ref_dut_delta_text(clean)
+    )
     has_non_ignorable_error = any(
         (re.search(r"\b(ERROR|FATAL|Fatal)\b", line) is not None)
         and not is_ignorable_error_at(clean_lines, index)
@@ -466,7 +518,7 @@ def choose_bucket(source: SourceHit | None, runs: list[RunHit]) -> tuple[str, li
     if status == "true_stuck_evidence":
         return "true_stuck_candidate", notes
     if status == "difftest_mismatch":
-        return "mismatch_needs_model_check", notes
+        return "mismatch_needs_runner_profile_check", notes
     if status == "selfcheck_fail":
         return "selfcheck_needs_source_or_wave_check", notes
     if status == "passed_good_trap":

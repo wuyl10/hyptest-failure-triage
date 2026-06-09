@@ -46,20 +46,34 @@ Action:
 
 ### `spike_or_model_limitation`
 
-The failure is expected because Spike/golden model lacks a microarchitectural
-feature or platform model needed by the case.
+The failure is expected because the selected gate/model lacks a
+microarchitectural feature or platform model needed by the case. Most entries in
+this bucket are official Spike gate gaps; do not apply this label to a LinkNan
+difftest REF-DUT mismatch until the runner and reference path have been
+identified.
 
 Common causes:
 
-- Spike has no cache/TLB timing model for cache-residency, CBO side effects, refill ordering, replay queues, sbuffer, uncache buffer, or response-context binding.
-- Spike/PMA model differs from the current platform's PMA/PBMT/MMIO routing.
+- Official/community Spike (`HYPTEST_SPIKE_BIN`) has no cache/TLB timing model
+  for cache-residency, CBO side effects, refill ordering, replay queues,
+  sbuffer, uncache buffer, or response-context binding.
+- Official/community Spike lacks or differs from the current platform's
+  PMA/PBMT/MMIO routing model.
 - The case intentionally observes RTL-only behavior such as cacheline dirty preservation, MMIO response timing, internal watchdog, or replay escape.
+- A LinkNan difftest reference (`HYPTEST_DIFFTEST_REF_SO`) has a confirmed,
+  runner-specific modeling/alignment gap after REF-DUT first-divergence analysis.
 
 Action:
 
 - Do not call it RTL bug solely from mismatch.
 - Mark `RTL-only`, `manual`, or `blocked` as appropriate.
 - If a responder exists and preserves intent, reroute only to an equivalent responder. Otherwise leave blocked/manual.
+- When this label is used for `HYPTEST_DIFFTEST_REF_SO`, the report text must
+  say "LinkNan difftest REF/model alignment gap" or equivalent runner-specific
+  wording, not "official Spike gap".
+- For LinkNan difftest PMA/PBMT/MMIO mismatches, first keep the case on the
+  `linknan-difftest` path and analyze REF-DUT PMA/PA/responder evidence. Do not
+  shortcut to "official Spike lacks PMA."
 
 ### `suspected_rtl_bug`
 
@@ -159,6 +173,24 @@ the reference model?" This is mandatory for clearing difftest mismatch lists.
 Never use `linknan-no-diff` evidence to clear a mismatch list, prove a mismatch
 is fixed, or convert a profile-marked unimplemented target into a PASS.
 
+PMA/PBMT/MMIO difftest logs use the same generic difftest triage flow as other
+mismatch logs: find the first divergent committed instruction or trap state,
+record REF-vs-DUT deltas, then decide whether the mismatch is selfcheck, model,
+environment, or RTL. The PMA/PBMT/MMIO fields below are required add-ons, not a
+separate shortcut or special PMA-only flow.
+
+Minimum PMA/PBMT/MMIO difftest add-ons:
+
+- First divergent PC, instruction, access width, and whether the access is setup
+  traffic or the target observation.
+- VA/PA when available, `mtval`/`stval`, `mcause`/`scause`, `mepc`/`sepc`, and
+  REF trap vs DUT trap/no-trap direction.
+- Decoded PMA/PBMT/MMIO row from the active profile, including `spec_allowed`,
+  `responder_required`, and `spike_gate_applicable`.
+- PMA CSR/config evidence when present: `pmaaddr*`, `pmacfg*`, TOR/NAPOT/entry
+  priority, reset/default entry, and physical map window.
+- Current platform responder evidence from source, log, or waveform.
+
 ## Reconstruct Test Intent From Source
 
 Open the full function and helper definitions. Extract:
@@ -242,6 +274,11 @@ Rules:
 - For Spike gate triage, compile/run Spike separately and compare logs.
 - For `linknan-difftest`, the workflow runner must use difftest-enabled
   evidence; `HYPTEST_DIFFTEST_REF_SO` is required.
+- For PMA/PBMT/MMIO mismatch, `official_spike_has_pma_csr=false` in the active
+  profile only describes official/community Spike (`HYPTEST_SPIKE_BIN`). It does
+  not prove that LinkNan difftest reference (`HYPTEST_DIFFTEST_REF_SO`) lacks
+  PMA; keep REF-DUT PMA evidence on the `linknan-difftest` path unless triage
+  explicitly needs a no-diff supplemental run.
 - For `linknan-no-diff`, do not invent or hardcode a no-diff CLI flag in this
   skill. Tell `$hyptest-workflow` `runner_mode=linknan-no-diff` and
   `difftest_mode=disabled`; workflow chooses the current supported runner
@@ -312,8 +349,11 @@ Waveform report must include:
 source assertion/setup wrong + corrected rerun passes
 => selfcheck_bug, patch ai_test_cases/manual_test_cases, remove from failure list
 
-Spike mismatch explained by missing cache/TLB/PMA/PBMT/MMIO model, RTL-only passes or target is inherently RTL-only
+Official Spike gate mismatch explained by missing cache/TLB/PMA/PBMT/MMIO model, RTL-only passes or target is inherently RTL-only
 => spike_or_model_limitation, mark RTL-only/manual; do not call RTL bug
+
+LinkNan difftest PMA/PBMT/MMIO mismatch with REF-DUT trap/data disagreement
+=> keep linknan-difftest evidence, analyze first divergence + PMA CSR/profile/responder; do not classify as official Spike gap
 
 PMA/PBMT/IO case needs a memory-like responder and none exists
 => environment_blocked, keep/manual; do not reroute to DRAM/dcache

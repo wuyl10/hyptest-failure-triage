@@ -1,6 +1,6 @@
 ---
 name: hyptest-failure-triage
-description: 专门分析 riscv-hyp-tests / LinkNan hyptest 失败闭环。凡是用户要求分析单个 case FAILED/selfcheck error/timeout/stuck、run.log/assert.log/get_result batch log、Spike/LinkNan difftest mismatch、50000 cycles no commit、HIT GOOD TRAP 但 FAILED、FSDB 波形定位、selfcheck/stuck/mismatch 失败列表、删除已修复失败列表项、修复 ai_test_cases/manual_test_cases 自校验或判断 suspected RTL bug 时，都必须使用本技能。也用于区分 golden/model limitation、用例断言写错、环境限制、真实 RTL bug，并给出修复、manual/blocked 分层和验证证据。凡涉及 PMA/PBMT/MMIO/Device/responder/no-response/stuck 的失败定位，必须同时查当前 hyptest-workflow spec_profile 的 PMA/PBMT/MMIO matrix 和当前平台源码/波形 responder 证据，分别给出规格允许性和当前 testbench 是否有返回路径。
+description: 专门分析 riscv-hyp-tests / LinkNan hyptest 失败闭环。凡是 FAILED/selfcheck error、timeout/stuck、run.log/assert.log/get_result batch log、Spike/LinkNan difftest mismatch、50000 cycles no commit、HIT GOOD TRAP 但 FAILED、FSDB 波形定位、失败列表清理、suspected RTL bug，或修复已有失败 case 前归因，都必须使用本技能；实际编辑 case/register/test_point 或执行 runner 时交给 hyptest-workflow。PMA/PBMT/MMIO/Device/responder/no-response 失败必须区分 spec_allowed、testbench responder 与 REF-DUT 行为。
 ---
 
 # Hyptest Failure Triage
@@ -15,9 +15,12 @@ description: 专门分析 riscv-hyp-tests / LinkNan hyptest 失败闭环。凡�
 ## Coordinate With Other Skills
 
 本技能负责失败归因、列表清理安全性和最终报告。需要改 case/注册、
-编译/重跑、分层、profile guard 时按下方 router 使用 `$hyptest-workflow`；
+编译/重跑、分层落表时按下方 router 使用 `$hyptest-workflow`；
 需要 FSDB/VCD/FST first-bad-cycle、握手、协议或 X-state 证据时使用
 `$waveform-debug`，再回到本技能收口分类。
+本技能可直接读取 active `hyptest-workflow` spec_profile 做失败分类所需的
+profile guard；只有需要执行 workflow 脚本、修改 case/register/test_point
+或实际编译/运行时才交给 `$hyptest-workflow`。
 
 ## Failure Model
 
@@ -28,12 +31,18 @@ Common entry symptoms:
 
 - `selfcheck fail`: `FAILED`, failed `TEST_ASSERT`/`AI_ASSERT`, or `HIT GOOD TRAP` with failed selfcheck.
 - `stuck/no-forward-progress`: `50000 cycles no commit`, watchdog/no-forward-progress, or timeout that needs stuck judgment.
-- `difftest mismatch`: Spike/golden/reference-model disagreement with the DUT or LinkNan platform run.
+- `difftest mismatch`: reference/DUT disagreement, including official Spike
+  gate mismatch and LinkNan difftest REF-DUT mismatch. Identify the runner
+  before making model-gap conclusions.
 
 Final classifications:
 
 - `selfcheck_bug`: the case/assert/setup is wrong; fix the test without weakening intent.
-- `spike_or_model_limitation`: the golden/model lacks the required architecture, microarchitecture, or platform behavior.
+- `spike_or_model_limitation`: official Spike/golden lacks the required
+  architecture, microarchitecture, or platform behavior, or a LinkNan difftest
+  reference gap is proven by first-divergence evidence. When this classification
+  is used for `HYPTEST_DIFFTEST_REF_SO`, report wording must say LinkNan
+  difftest REF/model alignment gap, not official Spike gap.
 - `environment_blocked`: the current platform/testbench lacks a required responder, device, config, runtime capability, or the active profile says the targeted RTL capability is not implemented.
 - `suspected_rtl_bug`: source intent is valid and log/waveform evidence points to RTL behavior.
 - `true_stuck`: internal no-commit/watchdog or waveform/log evidence proves no forward progress.
@@ -57,6 +66,7 @@ Log mode           run.log/assert.log/get_result batch log path, or pasted outpu
 List mode          explicit selfcheck/stuck/mismatch list path
 Cleanup mode       explicit or verified list path plus trusted rerun/snapshot evidence
 Workflow handoff   case_name/platform/spec_profile/log_paths from hyptest-workflow
+                  plus runner_context when workflow can identify runner evidence
 ```
 
 For list-level triage and cleanup, use only the list path explicitly provided by
@@ -96,36 +106,40 @@ For the current source/artifact layout and platform environment variables, use
 
 ## Workflow Handoff
 
-当 `hyptest-workflow` 已经生成交接卡片时，优先读取这些稳定字段，再进入本技能的 snapshot / source / waveform 流程：
+当 `hyptest-workflow` 已经生成交接卡片时，优先读取 handoff，再进入本技能的 snapshot / source / waveform 流程。字段契约以
+`hyptest-workflow/references/triage_handoff_schema.md` 为准；本技能重点消费这些字段：
 
 ```text
-case_name
-platform
-spec_profile
-scenario
-assert_site
-assert_expr
-exception_observed
-excpt_dump
-log_markers
-error_points
-reason_code_candidates
-reason_code_details
-next_single_run
-waveform_needed
-waveform_context
-  waveform_path
-  rtl_root
-  top_module
-  debug_target
-  time_window
-  expected_behavior
-  observed_behavior
-  suggested_waveform_report
-log_paths
+case_name / case_names / platform / spec_profile / scenario / log_paths
+runner_context / log_markers / error_points / reason_code_candidates / reason_code_details
+assert_site / assert_expr / exception_observed / excpt_dump / next_single_run
+runner_request { runner_mode, compile_plat, run_platform, difftest_mode, include_commented, cleanup_allowed, purpose }
+waveform_needed / waveform_context { waveform_path, rtl_root, top_module, debug_target, time_window, expected_behavior, observed_behavior, suggested_waveform_report }
 ```
 
-这些字段只是 workflow 初判证据，不是最终 RTL 结论。若 `waveform_needed=true`，或 `waveform_context` 带有 `waveform_path` / `debug_target` / `suggested_waveform_report`，先把这些上下文纳入本技能报告和 waveform-debug 输入；不要重复询问已经存在的 FSDB/top/debug target。若存在 stuck/difftest mismatch/FSDB 需求，继续按本技能规则收集 run.log、assert.log、source 和波形证据。
+这些字段只是 workflow 初判证据，不是最终 RTL 结论。`runner_context`
+只记录 workflow 从命令行、环境变量或日志中识别出的 runner 身份，例如
+official Spike、LinkNan platform、LinkNan difftest、difftest disabled、
+LinkNan no-diff、difftest mode conflict、multi-run、runner conflict 或 runner ambiguous；它用于防止把 `HYPTEST_SPIKE_BIN` 和
+`HYPTEST_DIFFTEST_REF_SO` 混用，不直接证明 model gap 或 RTL bug。
+`linknan_platform=true` 只说明平台/路径来自 LinkNan，不能当作 difftest
+enabled；`difftest_disabled=true` 说明日志明确带 no-diff/disabled 证据；
+`linknan_no_diff=true` 只能作为 RTL-only/selfcheck/波形补充观察，不能替代
+difftest mismatch 复现或清理证据；`difftest_mode_conflict=true` 表示 enabled
+和 disabled/no-diff 证据混在同一段日志里，先拆 run 再归因；`multi_run=true`
+时先按 case/runner 拆分 batch log 再归因。`runner_conflict=true` 表示 official
+Spike 与任意 LinkNan 平台/difftest/no-diff/RTL 证据混在一起，先拆分 runner 证据再分类。若
+`waveform_needed=true`，或 `waveform_context` 带有
+`waveform_path` / `debug_target` / `suggested_waveform_report`，先把这些上下文
+纳入本技能报告和 waveform-debug 输入；不要重复询问已经存在的 FSDB/top/debug
+target。若存在 stuck/difftest mismatch/FSDB 需求，继续按本技能规则收集
+run.log、assert.log、source 和波形证据。
+`case_names` 可能包含 batch log 中多个候选 case；`multi_run=true` 或
+`case_names` 多于 1 个时，先拆分单 case/runner 证据，不要把第一个
+`case_name` 当作整段日志唯一对象；有效 handoff 要求 `case_name` 与
+`case_names[0]` 一致。`log_markers.has_difftest_failed` /
+`has_mismatch` / `has_ref_dut_delta` 与 `has_selfcheck_failed` 必须分开看：
+REF-DUT mismatch 的裸 `FAILED` 不能直接当作 selfcheck/assertion failure。
 
 当本技能需要 `hyptest-workflow` 重新编译或运行时，只使用两个平台：
 
@@ -135,9 +149,10 @@ LinkNan   compile_elf.py --plat linknan  + get_result.py --platform linknan
 ```
 
 本技能的失败闭环只区分 Spike gate 和 LinkNan/RTL 证据。交接给
-`hyptest-workflow` 时必须明确 `runner_mode`：
+`hyptest-workflow` 时必须明确 `runner_request`：
 
 ```text
+runner_request:
 runner_mode: spike-gate | linknan-difftest | linknan-no-diff
 compile_plat: spike | linknan
 run_platform: spike | linknan
@@ -153,8 +168,20 @@ cleanup_allowed: true | false
   PMA/PBMT/MMIO responder、CBO/refill/cache/TLB/sbuffer/replay 等 Spike/golden
   不适合 gate 或 difftest 会挡住观察点的场景。
 
+Runner 角色必须先分清：`spike-gate` / `HYPTEST_SPIKE_BIN` 是
+official/community Spike；`linknan-difftest` / `HYPTEST_DIFFTEST_REF_SO` 是
+LinkNan 定制 difftest reference，二者不能互相代称。对 PMA/PBMT/MMIO
+相关 difftest mismatch，active profile 中 `official_spike_has_pma_csr=false`
+只说明 official Spike gate 不适用，不说明 LinkNan difftest reference 缺少 PMA。
+若 LinkNan REF 因 PMA 报 access fault 而 DUT 未报，或反之，按 REF-DUT 在
+PMA CSR decoding、TOR/NAPOT/priority、reset/default entry、physical map /
+responder 上的不一致继续分析，不能直接归为“Spike 没有 PMA”的 model gap。
+
 `linknan-no-diff` 证据可以支持 selfcheck、RTL-only 或波形结论，但不能清理
 difftest mismatch 列表，也不能把 profile 标记未实现的目标假装成 PASS。
+对已经出现的 LinkNan difftest mismatch，默认先保留并复现 `linknan-difftest`
+证据；`linknan-no-diff` 只作为补充观察 DUT 后续行为、FSDB 或 no-response
+路径的 runner，不能替代 mismatch 归因证据，也不能用于清理 mismatch 列表。
 
 ## Cross-Skill Invocation Router
 
@@ -171,9 +198,9 @@ or requires a runner:
   `linknan-no-diff`.
 - Decide or update `default` / `manual` / `compile-only` / `blocked` tiering,
   reason code, or registration status.
-- Query `spec_profile`, run profile guard, or decide PMA/PBMT/MMIO/Device
-  legality, responder requirement, Spike gate applicability, or RTL/Nanhu
-  implementation scope.
+- Run workflow helper scripts for profile guard or write tiering/register
+  decisions back to the repo. For log-only classification, this skill may read
+  the active `spec_profile` directly without handing off.
 - Update `test_point/**/*.md`, test-point to assertion mapping, case uniqueness,
   or repo-wide duplicate/similarity evidence.
 
@@ -218,7 +245,10 @@ RTL-only stuck/no-response/waveform:
 
 PMA/PBMT/MMIO/Device:
   failure-triage detects address/responder/no-response relevance
-  -> hyptest-workflow profile guard
+  -> failure-triage reads active spec_profile and records profile guard
+  -> use the same difftest first-divergence flow as other mismatch logs, then
+     add PMA/PBMT/MMIO fields; do not branch into a separate PMA shortcut
+  -> hyptest-workflow only if runner/edit/writeback is needed
   -> waveform-debug only if current signal evidence is needed
   -> failure-triage separates spec_allowed, responder availability, and RTL bug
 ```
@@ -306,6 +336,8 @@ Run `eval_log_patterns.py` for log-pattern changes and
 - Do not patch around a suspected RTL behavior discovered while fixing a test. If an edit/rerun loop exposes a new or remaining valid-expectation failure, record it in the Chinese `report.md` under manual-review items, keep it out of cleanup/removal decisions, and either queue it for later human review or call `$waveform-debug` first when signal-level evidence is needed.
 - Do not convert byte/half/word coverage into only 8B access coverage unless the original test naturally has 8B register semantics.
 - Do not fake a PASS for a case whose target is explicitly outside the active `hyptest-workflow` profile's RTL/Nanhu implemented scope. If the profile says the targeted feature/corner is `nanhu_not_impl`, unimplemented, unsupported, or otherwise outside current RTL implementation, classify/report it as blocked/manual implementation gap and keep it out of resolved/default cleanup unless the user explicitly retargets the case to an implemented scenario with documented intent.
+- Do not explain a LinkNan difftest PMA mismatch as "official Spike lacks PMA" without first confirming the runner is actually `spike-gate` / `HYPTEST_SPIKE_BIN`. `HYPTEST_DIFFTEST_REF_SO` is a separate LinkNan reference path and may implement PMA even when official Spike does not.
+- When `spike_or_model_limitation` is used for `HYPTEST_DIFFTEST_REF_SO`, the Chinese report must name it as LinkNan difftest REF/model alignment gap; do not shorten it to official Spike gap.
 - Do not make PMA/PBMT/MMIO/Device/responder/no-response decisions without a profile-matrix guard. First determine `spec_profile` (default from the hyptest-workflow profile registry if not explicit), then record `spec_allowed`, `responder_required`, and `spike_gate_applicable` from `references/spec_profiles/<spec_profile>.md` or `query_spec_profile.py`. Separately prove `testbench_responder_confirmed` from current platform source, run.log, or waveform. A legal PMA/peripheral PA is not proof of response; a no-response waveform is not proof that the PMA/PBMT combination is spec-disallowed.
 - Preserve dirty worktree changes. Never revert user or generated changes that are unrelated to the current failure.
 
@@ -319,32 +351,12 @@ references/decision_rules.md
 ```
 
 For PMA/PBMT/MMIO/Device/responder/no-response cases, also use the current
-`hyptest-workflow` profile as a first-class rule source before deciding whether
-the case is invalid, environment-blocked, or suspected RTL. The minimum triage
-note is:
-
-```text
-spec_profile:
-pa/window:
-pma:
-pbmt:
-spec_allowed:
-responder_required:
-spike_gate_applicable:
-rtl_implemented:
-profile_not_impl_reason:
-testbench_responder_confirmed:
-platform/source evidence:
-wave/log evidence:
-classification:
-```
-
-Use the profile for the PMA/PBMT legality question and RTL implementation-scope
-question, and use platform source/waveform for the response-path question; do
-not collapse those axes into one "valid/invalid" label. A profile-marked
-unimplemented RTL feature is not a selfcheck bug and not a pass condition; it is
-blocked/manual implementation-gap evidence unless the case is explicitly
-retargeted to an implemented scenario.
+`hyptest-workflow` profile as a first-class rule source. PMA difftest logs are
+not a separate analysis class: first identify the generic REF-DUT divergence
+point, then append the PMA/PBMT/MMIO add-ons from
+`references/decision_rules.md` §Runner And Difftest Mode Handoff. Keep the
+profile legality, RTL implementation scope, and testbench response-path axes
+separate.
 
 That reference contains the full taxonomy, evidence trust levels, Spike/platform
 limitation checks, waveform requirements, patch policy, safe-list-update rules,

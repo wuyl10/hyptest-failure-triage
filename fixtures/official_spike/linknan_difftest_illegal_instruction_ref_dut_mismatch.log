@@ -1,0 +1,10 @@
+risc-v NH-V5 tests
+ai_arch_custom_instr_ref_dut_illegal_mismatch_corner
+HYPTEST_DIFFTEST_REF_SO=/nfs/project/difftest/riscv64-spike-so
+LinkNan difftest enabled
+the reference model is /nfs/project/difftest/riscv64-spike-so
+REF-DUT mismatch: REF reports illegal instruction, DUT continues
+REF mcause=0x2 mepc=0x80001234
+DUT mcause=0x0 mepc=0x0
+Do first-divergence triage before assigning a model gap.
+DIFFTEST FAILED at cycle 12345

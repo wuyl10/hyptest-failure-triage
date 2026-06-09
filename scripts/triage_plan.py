@@ -44,7 +44,13 @@ def classify_action(item: dict[str, Any]) -> tuple[str, str]:
         return "stuck_debug", "internal no-commit/watchdog evidence present"
     if status == "difftest_mismatch":
         if has_pbmt:
-            return "mismatch_model_check", "PBMT/PMA source tags; check Spike/platform model before RTL bug"
+            return (
+                "mismatch_runner_profile_check",
+                (
+                    "PBMT/PMA source tags; preserve difftest first-divergence, "
+                    "then identify runner/ref/profile/responder before RTL or model conclusion"
+                ),
+            )
         return "mismatch_debug", "difftest mismatch on latest run"
     if status == "selfcheck_fail":
         if has_waveform_evidence(item):
@@ -69,7 +75,7 @@ def summarize(snapshot: list[dict[str, Any]]) -> list[dict[str, Any]]:
         "remove_candidate",
         "source_or_rerun",
         "waveform_report",
-        "mismatch_model_check",
+        "mismatch_runner_profile_check",
         "mismatch_debug",
         "stuck_debug",
         "long_run_inconclusive",

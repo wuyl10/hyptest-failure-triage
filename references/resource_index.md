@@ -41,6 +41,7 @@
 | --- | --- |
 | `hit_good_trap_but_failed.log` | GOOD TRAP 但 selfcheck FAILED |
 | `difftest_mismatch.log` | difftest mismatch |
+| `difftest_failed_ref_dut_delta.log` | `DIFFTEST FAILED` + REF/DUT delta，不含 literal mismatch 也应归 difftest mismatch |
 | `internal_50000_no_commit.log` | 内部 50000 cycles no commit |
 | `timeout_only.log` | 仅 wall-clock timeout，不足以判 stuck |
 | `fsdb_version_warning_pass.log` | FSDB/Verdi banner 但测试通过 |
@@ -55,6 +56,10 @@
 | --- | --- |
 | `cbo_no_a_fault_classification.log` | CBO permission / A-bit 分类差异 |
 | `pma_pbmt_mmio_cacheability.log` | PMA/PBMT/MMIO/cacheability model gap |
+| `linknan_difftest_pma_ref_dut_mismatch.log` | LinkNan difftest PMA/PBMT/MMIO REF-DUT mismatch 负向 fixture，防止误判为 official Spike gap |
+| `linknan_difftest_illegal_instruction_ref_dut_mismatch.log` | LinkNan difftest illegal-instruction REF-DUT mismatch 负向 fixture，防止非 PMA 分支误判为 official Spike gap |
+| `mixed_spike_and_linknan_difftest_pma_conflict.log` | 同一日志混入 official Spike 与 LinkNan difftest marker 时必须先拆 runner |
+| `linknan_platform_only_pma_no_response.log` | 只有 LinkNan 平台路径不能误判为 LinkNan difftest |
 | `missing_custom_csr.log` | custom CSR / custom privilege model gap |
 | `nmi_double_trap_scope_excluded.log` | NMI / double trap scope exclusion |
 | `lrsc_reservation_timeout.log` | LR/SC reservation timeout model gap |

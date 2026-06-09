@@ -397,6 +397,7 @@ def main() -> int:
         by_case["case_real_stuck"]["runs"][0]["status"] = "difftest_mismatch"
         by_case["case_real_stuck"]["runs"][0]["has_internal_stuck"] = False
         by_case["case_real_stuck"]["runs"][0]["has_mismatch"] = True
+        by_case["case_real_stuck"]["preliminary_bucket"] = "mismatch_needs_runner_profile_check"
         added = json.loads(json.dumps(by_case["case_passed_good_trap"]))
         added["case"] = "case_new_failure"
         added["runs"][0]["status"] = "selfcheck_fail"

@@ -1,0 +1,5 @@
+python3 get_result.py --platform spike --case ai_arch_pma_mixed_corner
+HYPTEST_DIFFTEST_REF_SO=/nfs/ref/riscv64-spike-so
+LinkNan difftest enabled
+PMA PBMT REF-DUT mismatch
+FAILED

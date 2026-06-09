@@ -1,0 +1,6 @@
+The first instruction of core 0 has commited. Difftest enabled.
+risc-v NH-V5 tests
+ai_arch_pma_boundary_scalar_fault_corner
+REF mcause=0x7 mtval=0x0000030000000ff8
+DUT mcause=0x0 mtval=0x0
+DIFFTEST FAILED at cycle 31294

@@ -44,7 +44,7 @@
 | 需求 | 调用 | 回到本 skill 做什么 |
 | --- | --- | --- |
 | 改 case、改注册、编译/重跑、分层、reason_code、test_point 回填 | `hyptest-workflow` | 用运行/分层证据做最终归因和列表清理判断 |
-| `spec_profile`、PMA/PBMT/MMIO/Device guard、responder_required、RTL/Nanhu implementation scope | `hyptest-workflow` | 区分 spec_allowed、环境 blocked、profile 未实现、suspected RTL |
+| log-only 的 `spec_profile`、PMA/PBMT/MMIO/Device guard、responder_required、RTL/Nanhu implementation scope | 本 skill 可直接读取 `hyptest-workflow` profile | 区分 spec_allowed、环境 blocked、profile 未实现、suspected RTL；只有需要 workflow 脚本、case/register/test_point 修改或 runner/writeback 时才交 `hyptest-workflow` |
 | FSDB/VCD/FST、first-bad-cycle、valid/ready/协议/X-state、no-response/stuck 信号路径 | `waveform-debug` | 在本 skill 的中文 `report.md` 中引用 waveform-debug 的 `report.md`，并摘要信号证据 |
 | mismatch cleanup | `hyptest-workflow` 跑 `linknan-difftest` | 不靠 waveform 清理；本 skill 检查 clean rerun 后 dry-run/final update |
 | RTL-only stuck/no-response/waveform | `hyptest-workflow` 做 profile guard + `linknan-no-diff`/FSDB，必要时 `waveform-debug` | 收口为 true_stuck / environment_blocked / suspected_rtl_bug / inconclusive |
@@ -57,14 +57,16 @@
 
 - `selfcheck fail`：断言失败、`FAILED`、`HIT GOOD TRAP` 但 selfcheck 失败。
 - `stuck/no-forward-progress`：`50000 cycles no commit`、watchdog/no-forward-progress，或需要判断的 timeout。
-- `difftest mismatch`：DUT 和 Spike/golden/reference model 不一致。
+- `difftest mismatch`：reference/DUT 不一致，包括 official Spike gate
+  mismatch 和 LinkNan difftest REF-DUT mismatch；必须先识别 runner，再下
+  model-gap 结论。
 
 六类归因才是最终结论：
 
 | 归因 | 含义 |
 | --- | --- |
 | `selfcheck_bug` | case/assert/setup 错，修测试但不能削弱原验证目标 |
-| `spike_or_model_limitation` | golden/model 缺少所需架构、微结构或平台行为 |
+| `spike_or_model_limitation` | official Spike/golden model 缺少所需架构、微结构或平台行为，或 LinkNan difftest REF gap 已经经 first-divergence 证实 |
 | `environment_blocked` | 当前平台/testbench 缺 responder、设备、配置或运行能力，或 active profile 标记目标 RTL/Nanhu 能力未实现 |
 | `suspected_rtl_bug` | case 目标合理，日志/波形证据指向 RTL 行为错误 |
 | `true_stuck` | 有内部 no-commit/watchdog 或波形/log 无前进证据 |
@@ -105,7 +107,7 @@ WAVEFORM_DEBUG                     waveform-debug bundled scripts
 | Log | run.log/assert.log/get_result batch log/粘贴输出 | 否 |
 | List | 明确的 selfcheck/stuck/mismatch list 路径 | 是 |
 | Cleanup | 要删除/更新的 list 路径 + 可信重跑证据 | 是 |
-| Workflow handoff | workflow 交接卡片里的 case/log/spec_profile | 否 |
+| Workflow handoff | workflow 交接卡片里的 case/log/spec_profile/runner_context | 否 |
 
 列表分析和列表清理只使用用户或可信 workflow handoff 明确给出的 list 路径。不要根据
 `regress_logs/` 下的默认文件名自行推断或探测失败列表；如果任务需要 list 但没有给路径，先询问路径。
@@ -139,7 +141,19 @@ mismatch list，`update_failure_list.py` 需要同时传
 `--allow-difftest-disabled` 和 `--difftest-disabled-override-reason <reason>`；
 报告里也要记录这个原因。
 
-运行平台只区分 Spike 和 LinkNan：
+运行平台只区分 Spike 和 LinkNan，但 runner 角色必须分清：
+`spike-gate` / `HYPTEST_SPIKE_BIN` 是 official/community Spike；
+`linknan-difftest` / `HYPTEST_DIFFTEST_REF_SO` 是 LinkNan 定制 difftest
+reference。profile 里的 `official_spike_has_pma_csr=false` 只约束
+official Spike gate，不能据此推断 LinkNan difftest reference 缺 PMA。
+workflow handoff 中的 `runner_context` 只是 runner 身份证据（official Spike /
+LinkNan platform / LinkNan difftest / difftest disabled / LinkNan no-diff /
+multi-run / conflict / ambiguous），用于选择后续复现
+路径；不要把它本身当作 model gap、environment blocked 或 suspected RTL bug
+的最终结论。`linknan_platform=true` 只说明日志/路径来自 LinkNan，不等于
+difftest enabled；`linknan_no_diff=true` 只能支持 RTL-only/selfcheck/波形补充
+观察，不能清理 difftest mismatch；`multi_run=true` 时先按 case/runner 拆分
+batch log；`runner_conflict=true` 时先拆分 runner 证据。
 
 | runner_mode | 编译 | 运行 | 用途 |
 | --- | --- | --- | --- |
@@ -149,6 +163,19 @@ mismatch list，`update_failure_list.py` 需要同时传
 
 `linknan-no-diff` 只能支持 selfcheck、RTL-only 或波形结论，不能清理
 difftest mismatch，也不能把 profile 标记未实现的目标假装成 PASS。
+
+当本 skill 需要 workflow 执行 LinkNan difftest 复现时，交接卡片至少带上：
+
+```text
+runner_request:
+  runner_mode: linknan-difftest
+  compile_plat: linknan
+  run_platform: linknan
+  difftest_mode: enabled
+  include_commented: true
+  cleanup_allowed: false
+  purpose: reproduce REF-DUT mismatch with difftest enabled
+```
 
 下面这段命令由 `python3 $HYPTEST_FAILURE_TRIAGE_SKILL_HOME/scripts/update_readme_commands.py`
 从 `scripts/list_skill_commands.py --markdown` 生成。
@@ -276,7 +303,7 @@ difftest mismatch，也不能把 profile 标记未实现的目标假装成 PASS�
 | 分类 | 含义 | 动作 |
 | --- | --- | --- |
 | `selfcheck_bug` | 用例断言、地址别名、seed/check 路径或期望错误 | 修 case，编译和重跑，PASS 后删表 |
-| `spike_or_model_limitation` | Spike/golden model 缺少 cache/TLB/PMA/PBMT/MMIO/CBO 等模型 | 标记 RTL-only/manual/blocked，不误判 RTL bug |
+| `spike_or_model_limitation` | official Spike/golden model 缺少 cache/TLB/PMA/PBMT/MMIO/CBO 等模型，或 LinkNan difftest REF gap 已经经 first-divergence 证实 | 标记 RTL-only/manual/blocked，不误判 RTL bug；若对象是 `HYPTEST_DIFFTEST_REF_SO`，中文报告必须写成 LinkNan difftest REF/model alignment gap，不能写 official Spike gap；LinkNan difftest PMA mismatch 不可直接按 official Spike gap 收口 |
 | `suspected_rtl_bug` | 测试意图合理，源码和日志/波形指向 RTL 错误 | 写 `report.md`，给出证据和 owner 区域 |
 | `environment_blocked` | 当前 testbench 缺少需要的 responder/环境能力，或 active profile 明确标记目标 RTL/Nanhu 能力未实现 | 保留 blocked/manual，不改成 DRAM/dcache 或相邻已实现场景逃避 |
 | `true_stuck` | 有内部 no-commit/watchdog 或波形无前进证据 | 写 stuck report，保留列表 |
@@ -290,6 +317,8 @@ difftest mismatch，也不能把 profile 标记未实现的目标假装成 PASS�
 - 不要在修 selfcheck/改用例途中把疑似 RTL 行为顺手改没；先写入中文 `report.md` 的“待人工审核问题”，必要时用 waveform-debug 的 `report.md` 确认 first-bad-cycle。
 - 不要把 byte/half/word 覆盖降成只有 8B 访问。
 - 不要把 active `hyptest-workflow` profile 明确标记为 RTL/Nanhu 未实现的目标假装成 PASS；这类 case 保留 blocked/manual implementation-gap 证据，不能当作已修复从列表清掉，除非用户明确把 case retarget 到已实现场景并重新验证。
+- 不要把 LinkNan difftest PMA/PBMT/MMIO mismatch 解释成 “official Spike 没有 PMA”。先确认 runner；`HYPTEST_SPIKE_BIN` 和 `HYPTEST_DIFFTEST_REF_SO` 是两条不同 reference 路径。
+- 若 `spike_or_model_limitation` 用在 `HYPTEST_DIFFTEST_REF_SO`，报告固定写 LinkNan difftest REF/model alignment gap，并给出 REF-DUT first-divergence；不要缩写成 Spike gap。
 - 不要默认修改 RTL；suspected RTL bug 默认写证据和 owner check points。
 - 不要删除失败列表项，除非最新可信 rerun 是 clean GOOD TRAP/PASS 且无 FAILED/ERROR/mismatch/watchdog。
 - 保留 dirty worktree 中与当前任务无关的修改，不回滚用户改动。

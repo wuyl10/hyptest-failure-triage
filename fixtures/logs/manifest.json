@@ -30,6 +30,16 @@
     "expected_tags": ["difftest-enabled"]
   },
   {
+    "id": "difftest_failed_ref_dut_delta",
+    "file": "difftest_failed_ref_dut_delta.log",
+    "expected_status": "difftest_mismatch",
+    "expected_metadata": {
+      "difftest_enabled": true,
+      "has_mismatch": true
+    },
+    "expected_tags": ["difftest-enabled"]
+  },
+  {
     "id": "internal_50000_no_commit",
     "file": "internal_50000_no_commit.log",
     "expected_status": "true_stuck_evidence",

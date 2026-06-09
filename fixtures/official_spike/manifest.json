@@ -14,6 +14,42 @@
     "expected_tags": ["official-spike", "model-gap", "pma-pbmt-mmio"]
   },
   {
+    "id": "linknan_difftest_pma_ref_dut_mismatch",
+    "file": "linknan_difftest_pma_ref_dut_mismatch.log",
+    "case_name": "ai_arch_pma_mem_io_cross_boundary_scalar_fault_no_partial_corner",
+    "expected_bucket": "pma_pbmt_mmio_linknan_difftest_needs_first_divergence",
+    "expected_tags": ["linknan-difftest", "runner-check", "pma-pbmt-mmio"],
+    "forbidden_buckets": ["official_spike_pma_pbmt_mmio_cacheability_model_gap"],
+    "forbidden_tags": ["official-spike", "model-gap"]
+  },
+  {
+    "id": "linknan_difftest_illegal_instruction_ref_dut_mismatch",
+    "file": "linknan_difftest_illegal_instruction_ref_dut_mismatch.log",
+    "case_name": "ai_arch_custom_instr_ref_dut_illegal_mismatch_corner",
+    "expected_bucket": "linknan_difftest_needs_first_divergence",
+    "expected_tags": ["linknan-difftest", "runner-check"],
+    "forbidden_buckets": ["official_spike_illegal_instruction_model_gap"],
+    "forbidden_tags": ["official-spike", "model-gap"]
+  },
+  {
+    "id": "mixed_spike_and_linknan_difftest_pma_conflict",
+    "file": "mixed_spike_and_linknan_difftest_pma_conflict.log",
+    "case_name": "ai_arch_pma_mixed_corner",
+    "expected_bucket": "pma_pbmt_mmio_runner_conflict_needs_disambiguation",
+    "expected_tags": ["runner-conflict", "runner-check", "pma-pbmt-mmio"],
+    "forbidden_buckets": ["official_spike_pma_pbmt_mmio_cacheability_model_gap"],
+    "forbidden_tags": ["official-spike", "model-gap"]
+  },
+  {
+    "id": "linknan_platform_only_pma_needs_runner_disambiguation",
+    "file": "linknan_platform_only_pma_no_response.log",
+    "case_name": "ai_arch_pma_platform_only_corner",
+    "expected_bucket": "pma_pbmt_mmio_runner_disambiguation_needed",
+    "expected_tags": ["runner-check", "profile-guard", "pma-pbmt-mmio"],
+    "forbidden_buckets": ["pma_pbmt_mmio_linknan_difftest_needs_first_divergence", "official_spike_pma_pbmt_mmio_cacheability_model_gap"],
+    "forbidden_tags": ["official-spike", "model-gap", "linknan-difftest"]
+  },
+  {
     "id": "nmi_double_trap_scope_excluded",
     "file": "nmi_double_trap_scope_excluded.log",
     "case_name": "nmi_double_trap_tests_1",

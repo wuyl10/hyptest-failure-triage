@@ -129,7 +129,7 @@ Recommended action:
 - Keep the test only if the assertion is still valid for the active spec profile; otherwise
   move it to manual/compile-only instead of changing the architectural target.
 
-### PMA / PBMT / MMIO / cacheability model gap
+### Official Spike PMA / PBMT / MMIO / cacheability model gap
 
 Observable shape:
 
@@ -144,6 +144,10 @@ Recommended action:
 - Classify as official Spike model gap or manual/RTL-only after confirming the
   source intentionally targets PMA/PBMT/MMIO/cacheability behavior.
 - Do not rewrite the target address back to normal DRAM only to satisfy Spike.
+- This pattern does not explain a LinkNan difftest REF-DUT PMA mismatch by
+  itself. If the runner is `linknan-difftest` / `HYPTEST_DIFFTEST_REF_SO`, keep
+  the evidence on the difftest path and analyze first divergence, PMA CSR
+  decoding, PA window, and responder behavior before assigning a model gap.
 
 ### Missing custom CSR / custom privilege model
 

@@ -37,8 +37,11 @@ def main() -> int:
 
     for index, item in enumerate(cases, 1):
         label = str(item["id"])
-        log_path = base_dir / str(item["file"])
-        text = log_path.read_text(encoding="utf-8", errors="ignore")
+        if "inline_log" in item:
+            text = str(item["inline_log"])
+        else:
+            log_path = base_dir / str(item["file"])
+            text = log_path.read_text(encoding="utf-8", errors="ignore")
         result = classify_official_spike_pattern(text, case_name=str(item.get("case_name", "")))
         failures: list[str] = []
 
@@ -50,6 +53,15 @@ def main() -> int:
         missing_tags = sorted(expected_tags - set(result.tags))
         if missing_tags:
             failures.append(f"missing expected tags: {', '.join(missing_tags)}")
+
+        forbidden_buckets = set(item.get("forbidden_buckets", []))
+        if result.bucket in forbidden_buckets:
+            failures.append(f"forbidden bucket matched: {result.bucket}")
+
+        forbidden_tags = set(item.get("forbidden_tags", []))
+        present_forbidden_tags = sorted(forbidden_tags & set(result.tags))
+        if present_forbidden_tags:
+            failures.append(f"forbidden tags present: {', '.join(present_forbidden_tags)}")
 
         if failures:
             print(f"FAIL [{index}/{len(cases)}] {label}")
